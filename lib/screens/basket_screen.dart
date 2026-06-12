@@ -6,6 +6,7 @@ import '../models/basket_result.dart';
 import '../services/api_service.dart';
 import '../services/local_store.dart';
 import '../services/analytics.dart';
+import 'package:share_plus/share_plus.dart';
 import '../widgets/app_theme.dart';
 
 class BasketScreen extends StatefulWidget {
@@ -29,6 +30,7 @@ class _BasketScreenState extends State<BasketScreen> {
   final TextEditingController _controller = TextEditingController();
 
   final List<String> _items = [];
+  Set<String> _bought = <String>{};
   BasketResponse? _result;
   bool _loading = false;
   String? _error;
@@ -42,11 +44,13 @@ class _BasketScreenState extends State<BasketScreen> {
   /// Load the persisted basket and, if it has items, compare immediately.
   Future<void> _loadAndCompare() async {
     final saved = await LocalStore.basket();
+    final bought = await LocalStore.boughtItems();
     if (!mounted) return;
     setState(() {
       _items
         ..clear()
         ..addAll(saved);
+      _bought = bought.map((e) => e.trim().toLowerCase()).toSet();
     });
     if (_items.isNotEmpty) _compare();
   }
@@ -67,9 +71,31 @@ class _BasketScreenState extends State<BasketScreen> {
     _persist();
   }
 
-  void _removeItem(int index) {
+  Future<void> _removeItem(int index) async {
+    final item = _items[index];
     setState(() => _items.removeAt(index));
-    _persist();
+    await LocalStore.removeFromBasket(item);
+    final bought = await LocalStore.boughtItems();
+    if (mounted) {
+      setState(() => _bought = bought.map((e) => e.trim().toLowerCase()).toSet());
+    }
+  }
+
+  Future<void> _toggleBought(String item) async {
+    await LocalStore.toggleBought(item);
+    final bought = await LocalStore.boughtItems();
+    if (!mounted) return;
+    setState(() => _bought = bought.map((e) => e.trim().toLowerCase()).toSet());
+  }
+
+  Future<void> _share() async {
+    if (_items.isEmpty) return;
+    final lines = _items.map((e) => '\u2022 $e').join('\n');
+    final url =
+        'https://kolichka.gotvach.com/?b=${Uri.encodeComponent(_items.join(','))}';
+    await Share.share('\u041c\u043e\u044f\u0442\u0430 \u043a\u043e\u043b\u0438\u0447\u043a\u0430:\n$lines\n\n\u0421\u0440\u0430\u0432\u043d\u0438 \u0446\u0435\u043d\u0438: $url',
+        subject: 'Моята количка в Количка');
+    Analytics.instance.track('share_basket', {'items': _items.length});
   }
 
   Future<void> _compare() async {
@@ -109,6 +135,12 @@ class _BasketScreenState extends State<BasketScreen> {
         actions: [
           if (_items.isNotEmpty)
             IconButton(
+              tooltip: 'Сподели',
+              icon: const Icon(Icons.share),
+              onPressed: _share,
+            ),
+          if (_items.isNotEmpty)
+            IconButton(
               tooltip: 'Изчисти',
               icon: const Icon(Icons.delete_outline),
               onPressed: () async {
@@ -116,6 +148,7 @@ class _BasketScreenState extends State<BasketScreen> {
                 if (!mounted) return;
                 setState(() {
                   _items.clear();
+                  _bought.clear();
                   _result = null;
                 });
               },
@@ -124,7 +157,7 @@ class _BasketScreenState extends State<BasketScreen> {
       ),
       body: Column(
         children: [
-          // Input area
+          // Add-item row
           Padding(
             padding: const EdgeInsets.all(12),
             child: Row(
@@ -140,70 +173,110 @@ class _BasketScreenState extends State<BasketScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                FilledButton(onPressed: _addItem, child: const Text('+')),
+                FilledButton(onPressed: _addItem, child: const Icon(Icons.add)),
               ],
             ),
           ),
-
-          // Item chips
-          if (_items.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Wrap(
-                spacing: 6,
-                runSpacing: 4,
-                children: _items.asMap().entries.map((entry) {
-                  return Chip(
-                    label: Text(entry.value),
-                    deleteIcon: const Icon(Icons.close, size: 16),
-                    onDeleted: () => _removeItem(entry.key),
-                  );
-                }).toList(),
-              ),
-            ),
-
-          // Compare button
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _items.isNotEmpty ? _compare : null,
-                icon: const Icon(Icons.compare_arrows),
-                label: const Text('Сравни цени'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-              ),
-            ),
-          ),
-
-          const Divider(),
-
-          // Results
+          if (_items.isNotEmpty) _buildCounter(),
           Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _error != null
-                    ? Center(child: Text(_error!))
-                    : _result != null
-                        ? _buildResults()
-                        : const Center(
-                            child: Text(
-                              'Добавете продукти и натиснете "Сравни цени"',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: AppTheme.mutedText),
-                            ),
-                          ),
+            child: ListView(
+              padding: const EdgeInsets.only(bottom: 24),
+              children: [
+                ..._buildChecklist(),
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _items.isNotEmpty ? _compare : null,
+                      icon: const Icon(Icons.compare_arrows),
+                      label: const Text('Сравни цени в магазините'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                    ),
+                  ),
+                ),
+                if (_loading)
+                  const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (_error != null)
+                  Padding(padding: const EdgeInsets.all(24), child: Center(child: Text(_error!)))
+                else if (_result != null) ...[
+                  const Divider(),
+                  _buildResults(),
+                ],
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
+  Widget _buildCounter() {
+    final bought =
+        _items.where((e) => _bought.contains(e.trim().toLowerCase())).length;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+      child: Row(
+        children: [
+          const Text('Списък за пазаруване',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.mutedText)),
+          const Spacer(),
+          Text('$bought / ${_items.length} купени',
+              style: const TextStyle(fontSize: 12, color: AppTheme.mutedText)),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildChecklist() {
+    if (_items.isEmpty) {
+      return const [
+        Padding(
+          padding: EdgeInsets.fromLTRB(24, 28, 24, 12),
+          child: Text(
+            'Добави продукти, които искаш да купиш. Отметни ги, щом ги вземеш.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppTheme.mutedText),
+          ),
+        ),
+      ];
+    }
+    return _items.asMap().entries.map((e) {
+      final i = e.key;
+      final item = e.value;
+      final bought = _bought.contains(item.trim().toLowerCase());
+      return ListTile(
+        dense: true,
+        leading: Checkbox(
+          value: bought,
+          activeColor: AppTheme.primaryGreen,
+          onChanged: (_) => _toggleBought(item),
+        ),
+        title: Text(
+          item,
+          style: TextStyle(
+            decoration: bought ? TextDecoration.lineThrough : null,
+            color: bought ? AppTheme.mutedText : null,
+          ),
+        ),
+        trailing: IconButton(
+          icon: const Icon(Icons.close, size: 18),
+          tooltip: 'Премахни',
+          onPressed: () => _removeItem(i),
+        ),
+        onTap: () => _toggleBought(item),
+      );
+    }).toList();
+  }
+
   Widget _buildResults() {
     final result = _result!;
-    return SingleChildScrollView(
+    return Padding(
       padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

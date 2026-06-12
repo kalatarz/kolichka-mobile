@@ -10,6 +10,7 @@ class LocalStore {
   LocalStore._();
 
   static const _basketKey = 'kolichka.basket';
+  static const _boughtKey = 'kolichka.basket.bought';
   static const _favKey = 'kolichka.favorites';
 
   static Future<List<String>> _getList(String key) async {
@@ -50,11 +51,42 @@ class LocalStore {
     final list = await _getList(_basketKey);
     list.removeWhere((e) => e.trim().toLowerCase() == t);
     await _setList(_basketKey, list);
+    // drop any "bought" mark for the removed item
+    final bought = await _getList(_boughtKey);
+    if (_contains(bought, item)) {
+      bought.removeWhere((e) => e.trim().toLowerCase() == t);
+      await _setList(_boughtKey, bought);
+    }
   }
 
   static Future<void> setBasket(List<String> items) => _setList(_basketKey, items);
 
-  static Future<void> clearBasket() => _setList(_basketKey, <String>[]);
+  static Future<void> clearBasket() async {
+    await _setList(_basketKey, <String>[]);
+    await _setList(_boughtKey, <String>[]);
+  }
+
+  // ---- Basket "bought" checklist state ----
+
+  static Future<List<String>> boughtItems() => _getList(_boughtKey);
+
+  static Future<bool> isBought(String item) async =>
+      _contains(await _getList(_boughtKey), item);
+
+  /// Toggle an item's bought/checked state. Returns the NEW state.
+  static Future<bool> toggleBought(String item) async {
+    final t = item.trim();
+    if (t.isEmpty) return false;
+    final list = await _getList(_boughtKey);
+    if (_contains(list, t)) {
+      list.removeWhere((e) => e.trim().toLowerCase() == t.toLowerCase());
+      await _setList(_boughtKey, list);
+      return false;
+    }
+    list.add(t);
+    await _setList(_boughtKey, list);
+    return true;
+  }
 
   // ---- Favorites ----
 
