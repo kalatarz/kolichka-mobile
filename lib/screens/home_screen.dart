@@ -28,6 +28,7 @@ import '../widgets/search_bar.dart';
 import '../widgets/radius_segment.dart';
 import '../data/cat_groups.dart';
 import 'basket_screen.dart';
+import 'map_screen.dart';
 import 'promotions_screen.dart';
 import 'settings_screen.dart';
 
@@ -965,6 +966,23 @@ class _LocationFilterSheetState extends State<_LocationFilterSheet> {
                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: isDark ? AppTheme.mutedText : AppTheme.mutedText),
                   ),
                   const Spacer(),
+                  TextButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => MapScreen(
+                            lat: widget.lat,
+                            lng: widget.lng,
+                            radiusKm: _radiusKm,
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.map_outlined, size: 18),
+                    label: const Text('Карта'),
+                  ),
                   if (_loadingStores)
                     const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
                 ],

@@ -228,6 +228,23 @@ class ApiService {
     }
   }
 
+  /// POST /api/subscribe — weekly-offers email (server sends a confirm mail).
+  Future<void> subscribe({required String email, double? lat, double? lng}) async {
+    final uri = Uri.parse('${Config.apiBaseUrl}/api/subscribe');
+    final body = <String, dynamic>{'email': email};
+    if (lat != null) body['lat'] = _coord(lat);
+    if (lng != null) body['lng'] = _coord(lng);
+    final response = await _client
+        .post(uri,
+            headers: {'Content-Type': 'application/json', 'User-Agent': Config.userAgent},
+            body: jsonEncode(body))
+        .timeout(const Duration(seconds: 15));
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw ApiException('Subscribe failed (${response.statusCode})',
+          statusCode: response.statusCode);
+    }
+  }
+
   String _coord(double value) => value.toStringAsFixed(6);
 
   void close() {

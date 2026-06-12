@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../widgets/app_theme.dart';
 import '../widgets/feedback_sheet.dart';
 import '../config.dart';
+import '../widgets/subscribe_sheet.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -60,6 +61,12 @@ class SettingsScreen extends StatelessWidget {
             subtitle: const Text('Отвори в браузър'),
             trailing: const Icon(Icons.open_in_new, size: 16),
             onTap: () => _launchUrl('https://kolichka.gotvach.com'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.mark_email_read_outlined, size: 22, color: AppTheme.primaryGreen),
+            title: const Text('Седмични оферти по имейл'),
+            subtitle: const Text('Получавай най-добрите цени около теб'),
+            onTap: () => showSubscribeSheet(context),
           ),
           ListTile(
             leading: const Icon(Icons.star_rate_rounded, size: 24, color: AppTheme.warnAmber),
