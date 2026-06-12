@@ -228,6 +228,40 @@ class ApiService {
     }
   }
 
+  /// Shared family basket (cross-device synced checklist). Items are
+  /// [{'n': name, 'b': bought}].
+  Future<Map<String, dynamic>> famCreate(List<Map<String, dynamic>> items) async {
+    final uri = Uri.parse('${Config.apiBaseUrl}/api/fambasket');
+    final resp = await _client
+        .post(uri,
+            headers: {'Content-Type': 'application/json', 'User-Agent': Config.userAgent},
+            body: jsonEncode({'items': items}))
+        .timeout(const Duration(seconds: 15));
+    if (resp.statusCode != 200) throw ApiException('Create failed (${resp.statusCode})');
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// Returns null if the code does not exist.
+  Future<Map<String, dynamic>?> famGet(String code) async {
+    final uri = Uri.parse('${Config.apiBaseUrl}/api/fambasket/$code');
+    final resp = await _client
+        .get(uri, headers: {'User-Agent': Config.userAgent})
+        .timeout(const Duration(seconds: 15));
+    if (resp.statusCode == 404) return null;
+    if (resp.statusCode != 200) throw ApiException('Get failed (${resp.statusCode})');
+    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  Future<void> famPut(String code, List<Map<String, dynamic>> items) async {
+    final uri = Uri.parse('${Config.apiBaseUrl}/api/fambasket/$code');
+    final resp = await _client
+        .put(uri,
+            headers: {'Content-Type': 'application/json', 'User-Agent': Config.userAgent},
+            body: jsonEncode({'items': items}))
+        .timeout(const Duration(seconds: 15));
+    if (resp.statusCode != 200) throw ApiException('Sync failed (${resp.statusCode})');
+  }
+
   /// POST /api/subscribe — weekly-offers email (server sends a confirm mail).
   Future<void> subscribe({required String email, double? lat, double? lng}) async {
     final uri = Uri.parse('${Config.apiBaseUrl}/api/subscribe');

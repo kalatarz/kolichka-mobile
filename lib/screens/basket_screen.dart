@@ -35,28 +35,202 @@ class _BasketScreenState extends State<BasketScreen> {
   BasketResponse? _result;
   bool _loading = false;
   String? _error;
+  String? _famCode; // joined shared/family basket code
 
   @override
   void initState() {
     super.initState();
-    _loadAndCompare();
+    _bootstrap();
   }
 
-  /// Load the persisted basket and, if it has items, compare immediately.
-  Future<void> _loadAndCompare() async {
-    final saved = await LocalStore.basket();
-    final bought = await LocalStore.boughtItems();
-    if (!mounted) return;
-    setState(() {
-      _items
-        ..clear()
-        ..addAll(saved);
-      _bought = bought.map((e) => e.trim().toLowerCase()).toSet();
-    });
+  Future<void> _bootstrap() async {
+    _famCode = await LocalStore.famCode();
+    if (_famCode != null) {
+      await _famLoad(silent: true);
+    } else {
+      final saved = await LocalStore.basket();
+      final bought = await LocalStore.boughtItems();
+      if (mounted) {
+        setState(() {
+          _items
+            ..clear()
+            ..addAll(saved);
+          _bought = bought.map((e) => e.trim().toLowerCase()).toSet();
+        });
+      }
+    }
     if (_items.isNotEmpty) _compare();
   }
 
   Future<void> _persist() => LocalStore.setBasket(_items);
+
+  List<Map<String, dynamic>> _serialize() => _items
+      .map((n) => {'n': n, 'b': _bought.contains(n.trim().toLowerCase())})
+      .toList();
+
+  /// Push the current list to the shared basket (fire-and-forget).
+  Future<void> _famSync() async {
+    final code = _famCode;
+    if (code == null) return;
+    try {
+      await _api.famPut(code, _serialize());
+    } catch (_) {/* offline — local kept, resyncs on next change */}
+  }
+
+  /// Pull the shared list from the server and replace local state.
+  Future<void> _famLoad({bool silent = false}) async {
+    final code = _famCode;
+    if (code == null) return;
+    try {
+      final data = await _api.famGet(code);
+      if (data == null) {
+        await LocalStore.clearFamCode();
+        if (mounted) setState(() => _famCode = null);
+        return;
+      }
+      final raw = (data['items'] as List?) ?? [];
+      final names = <String>[];
+      final bought = <String>[];
+      for (final it in raw) {
+        final n = (it is Map ? it['n'] : null)?.toString() ?? '';
+        if (n.isEmpty) continue;
+        names.add(n);
+        if (it is Map && it['b'] == true) bought.add(n);
+      }
+      await LocalStore.setBasket(names);
+      await LocalStore.setBought(bought);
+      if (!mounted) return;
+      setState(() {
+        _items
+          ..clear()
+          ..addAll(names);
+        _bought = bought.map((e) => e.trim().toLowerCase()).toSet();
+      });
+      if (_items.isNotEmpty) _compare();
+    } catch (_) {
+      if (!silent && mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Грешка при синхронизация')));
+      }
+    }
+  }
+
+  Future<void> _famCreate() async {
+    try {
+      final data = await _api.famCreate(_serialize());
+      final code = data['code']?.toString();
+      if (code == null) return;
+      await LocalStore.setFamCode(code);
+      Analytics.instance.track('fam_create');
+      if (!mounted) return;
+      setState(() => _famCode = code);
+      _showFamCode(code);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Грешка при създаване')));
+      }
+    }
+  }
+
+  Future<void> _famJoin(String code) async {
+    try {
+      final data = await _api.famGet(code);
+      if (data == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('Няма такъв код')));
+        }
+        return;
+      }
+      await LocalStore.setFamCode(code);
+      _famCode = code;
+      Analytics.instance.track('fam_join');
+      await _famLoad();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Грешка при присъединяване')));
+      }
+    }
+  }
+
+  Future<void> _shareFamCode() async {
+    final code = _famCode;
+    if (code == null) return;
+    await Share.share(
+        'Присъедини се към семейната ни количка с код: $code\nИзтегли Количка: https://kolichka.gotvach.com',
+        subject: 'Семейна количка');
+  }
+
+  void _showFamCode(String code) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Готово!'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('Сподели този код със семейството:'),
+          const SizedBox(height: 8),
+          SelectableText(code,
+              style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, letterSpacing: 3)),
+        ]),
+        actions: [
+          TextButton(onPressed: () { Navigator.pop(ctx); _shareFamCode(); }, child: const Text('Сподели')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Готово')),
+        ],
+      ),
+    );
+  }
+
+  void _openFamDialog() {
+    if (_famCode != null) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Семейна кошница'),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Споделена с код:'),
+            const SizedBox(height: 6),
+            SelectableText(_famCode!,
+                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 2)),
+            const SizedBox(height: 8),
+            const Text('Всеки с този код вижда и редактира същия списък — отметки и премахвания се синхронизират на всички устройства.',
+                style: TextStyle(fontSize: 12, color: AppTheme.mutedText)),
+          ]),
+          actions: [
+            TextButton(onPressed: () { Navigator.pop(ctx); _shareFamCode(); }, child: const Text('Сподели')),
+            TextButton(onPressed: () async { Navigator.pop(ctx); await LocalStore.clearFamCode(); if (mounted) setState(() => _famCode = null); }, child: const Text('Напусни')),
+            TextButton(onPressed: () { Navigator.pop(ctx); _famLoad(); }, child: const Text('Опресни')),
+          ],
+        ),
+      );
+      return;
+    }
+    final joinCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Семейна кошница'),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Споделете един списък със семейството — отметки (купено) и премахвания се виждат на всички устройства.',
+              style: TextStyle(fontSize: 13)),
+          const SizedBox(height: 14),
+          SizedBox(width: double.infinity, child: FilledButton.icon(
+            onPressed: () { Navigator.pop(ctx); _famCreate(); },
+            icon: const Icon(Icons.add), label: const Text('Създай нова'))),
+          const SizedBox(height: 12),
+          const Text('или въведи код:', style: TextStyle(fontSize: 12, color: AppTheme.mutedText)),
+          const SizedBox(height: 6),
+          Row(children: [
+            Expanded(child: TextField(controller: joinCtrl,
+                decoration: const InputDecoration(hintText: 'код', isDense: true, border: OutlineInputBorder()))),
+            const SizedBox(width: 8),
+            FilledButton(onPressed: () { final c = joinCtrl.text.trim(); Navigator.pop(ctx); if (c.isNotEmpty) _famJoin(c); }, child: const Text('Влез')),
+          ]),
+        ]),
+      ),
+    );
+  }
 
   void _addItem() {
     final text = _controller.text.trim();
@@ -70,6 +244,7 @@ class _BasketScreenState extends State<BasketScreen> {
       _controller.clear();
     });
     _persist();
+    _famSync();
   }
 
   Future<void> _removeItem(int index) async {
@@ -80,6 +255,7 @@ class _BasketScreenState extends State<BasketScreen> {
     if (mounted) {
       setState(() => _bought = bought.map((e) => e.trim().toLowerCase()).toSet());
     }
+    _famSync();
   }
 
   Future<void> _toggleBought(String item) async {
@@ -87,6 +263,7 @@ class _BasketScreenState extends State<BasketScreen> {
     final bought = await LocalStore.boughtItems();
     if (!mounted) return;
     setState(() => _bought = bought.map((e) => e.trim().toLowerCase()).toSet());
+    _famSync();
   }
 
   Future<void> _share() async {
@@ -134,6 +311,12 @@ class _BasketScreenState extends State<BasketScreen> {
       appBar: AppBar(
         title: const Text('Кошница'),
         actions: [
+          IconButton(
+            tooltip: 'Семейна кошница',
+            icon: Icon(_famCode != null ? Icons.groups : Icons.group_add_outlined,
+                color: _famCode != null ? AppTheme.primaryGreen : null),
+            onPressed: _openFamDialog,
+          ),
           if (_items.isNotEmpty)
             IconButton(
               tooltip: 'Сподели',
@@ -152,12 +335,27 @@ class _BasketScreenState extends State<BasketScreen> {
                   _bought.clear();
                   _result = null;
                 });
+                _famSync();
               },
             ),
         ],
       ),
       body: Column(
         children: [
+          if (_famCode != null)
+            Container(
+              width: double.infinity,
+              color: AppTheme.primaryGreen.withOpacity(0.12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Row(children: [
+                const Icon(Icons.groups, size: 16, color: AppTheme.primaryGreen),
+                const SizedBox(width: 6),
+                Expanded(child: Text('Семейна кошница · код $_famCode',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primaryGreen))),
+                InkWell(onTap: () => _famLoad(),
+                    child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.refresh, size: 18, color: AppTheme.primaryGreen))),
+              ]),
+            ),
           // Add-item row
           Padding(
             padding: const EdgeInsets.all(12),

@@ -12,6 +12,7 @@ class LocalStore {
   static const _basketKey = 'kolichka.basket';
   static const _boughtKey = 'kolichka.basket.bought';
   static const _favKey = 'kolichka.favorites';
+  static const _famKey = 'kolichka.fam.code';
 
   static Future<List<String>> _getList(String key) async {
     final p = await SharedPreferences.getInstance();
@@ -60,6 +61,25 @@ class LocalStore {
   }
 
   static Future<void> setBasket(List<String> items) => _setList(_basketKey, items);
+
+  static Future<void> setBought(List<String> items) => _setList(_boughtKey, items);
+
+  // ---- Shared family-basket code ----
+  static Future<String?> famCode() async {
+    final p = await SharedPreferences.getInstance();
+    final c = p.getString(_famKey);
+    return (c != null && c.isNotEmpty) ? c : null;
+  }
+
+  static Future<void> setFamCode(String code) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_famKey, code);
+  }
+
+  static Future<void> clearFamCode() async {
+    final p = await SharedPreferences.getInstance();
+    await p.remove(_famKey);
+  }
 
   static Future<void> clearBasket() async {
     await _setList(_basketKey, <String>[]);
