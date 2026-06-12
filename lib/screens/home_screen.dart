@@ -394,13 +394,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 const Icon(Icons.location_off, size: 64, color: AppTheme.warnAmber),
                 const SizedBox(height: 16),
                 const Text(
-                  'Не мога да определя местоположението',
+                  'Възникна проблем при зареждането',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Моля проверете GPS настройките и опитайте отново.',
+                  'Провери връзката си и опитай отново.',
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: AppTheme.mutedText),
                 ),
