@@ -65,7 +65,7 @@ class _KolichkaSearchBarState extends State<KolichkaSearchBar> {
                   // Magnifying glass icon
                   Padding(
                     padding: const EdgeInsets.only(left: 12),
-                    child: Text('🔍', style: TextStyle(fontSize: 14, color: isDark ? AppTheme.mutedText : AppTheme.mutedText)),
+                    child: Icon(Icons.search, size: 18, color: isDark ? AppTheme.mutedText : AppTheme.mutedText),
                   ),
                   // Input field
                   Expanded(

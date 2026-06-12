@@ -392,7 +392,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         onPressed: _openBasket,
         backgroundColor: AppTheme.primaryGreen,
         foregroundColor: Colors.white,
-        icon: const Text('🧺', style: TextStyle(fontSize: 18)),
+        icon: const Icon(Icons.shopping_basket, size: 20),
         label: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -420,45 +420,53 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  /// Category groups section — mirrors web CAT_GROUPS with expandable drill-down.
+  /// Category groups section — horizontal wrap of group chips (mirrors the web
+  /// header), with the open group's subcategories shown full-width below.
   Widget _buildCategoryGroups() {
-    return Column(
-      children: kCatGroups.asMap().entries.map((entry) {
-        final idx = entry.key;
-        final group = entry.value;
+    final groups = <MapEntry<int, CatGroup>>[];
+    for (var i = 0; i < kCatGroups.length; i++) {
+      final g = kCatGroups[i];
+      final hasActive = g.slugs.any((s) => _categories.any((c) => c.slug == s));
+      if (hasActive) groups.add(MapEntry(i, g));
+    }
+    if (groups.isEmpty) return const SizedBox.shrink();
 
-        // Filter slugs to only those present in the live categories API response
-        final activeSlugs = group.slugs.where((s) =>
-          _categories.any((c) => c.slug == s)
-        ).toList();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-        // Skip empty groups (all categories disabled/out of season)
-        if (activeSlugs.isEmpty) return const SizedBox.shrink();
-
-        final isExpanded = _openGroupIndex == idx;
-
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-          child: Column(
-            children: [
-              // Group header chip
-              InkWell(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: groups.map((e) {
+              final idx = e.key;
+              final group = e.value;
+              final isExpanded = _openGroupIndex == idx;
+              return InkWell(
                 onTap: () => _toggleGroup(idx),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(20),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
                     color: isExpanded
                         ? AppTheme.primaryGreen.withOpacity(0.15)
-                        : Theme.of(context).brightness == Brightness.dark
-                            ? AppTheme.darkCard.withOpacity(0.5)
-                            : Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(8),
+                        : (isDark ? AppTheme.darkCard : Colors.grey.shade100),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isExpanded
+                          ? AppTheme.primaryGreen
+                          : (isDark ? AppTheme.darkLine : AppTheme.lightLine),
+                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(group.emoji, style: const TextStyle(fontSize: 14)),
+                      Icon(_groupIcon(group.label),
+                          size: 16,
+                          color: isExpanded ? AppTheme.primaryGreen : AppTheme.mutedText),
                       const SizedBox(width: 6),
                       Text(
                         group.label,
@@ -467,12 +475,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           fontWeight: isExpanded ? FontWeight.w700 : FontWeight.w500,
                           color: isExpanded
                               ? AppTheme.primaryGreen
-                              : (Theme.of(context).brightness == Brightness.dark
-                                  ? AppTheme.primaryTextDark
-                                  : Colors.black87),
+                              : (isDark ? AppTheme.primaryTextDark : Colors.black87),
                         ),
                       ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: 2),
                       Icon(
                         isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
                         size: 16,
@@ -481,53 +487,85 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ],
                   ),
                 ),
-              ),
-
-              // Expanded subcategories
-              if (isExpanded)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4, left: 8),
-                  child: Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    children: activeSlugs.map((slug) {
-                      final cat = _categories.firstWhere((c) => c.slug == slug);
-                      final isSelected = _selectedCategory == slug;
-                      return InkWell(
-                        onTap: () => _handleCategoryTap(slug, cat.toString()),
-                        borderRadius: BorderRadius.circular(6),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? AppTheme.primaryGreen
-                                : (Theme.of(context).brightness == Brightness.dark
-                                    ? AppTheme.darkLine
-                                    : Colors.grey.shade200),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            cat.toString(),
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: isSelected
-                                  ? Colors.white
-                                  : (Theme.of(context).brightness == Brightness.dark
-                                      ? AppTheme.primaryTextDark
-                                      : Colors.black87),
-                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-            ],
+              );
+            }).toList(),
           ),
-        );
-      }).toList(),
+          if (_openGroupIndex != null) _buildSubcategories(_openGroupIndex!),
+        ],
+      ),
     );
+  }
+
+  /// Subcategory chips for the expanded group (full width, below the chips row).
+  Widget _buildSubcategories(int groupIdx) {
+    if (groupIdx < 0 || groupIdx >= kCatGroups.length) return const SizedBox.shrink();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final activeSlugs = kCatGroups[groupIdx].slugs
+        .where((s) => _categories.any((c) => c.slug == s))
+        .toList();
+    if (activeSlugs.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 10, bottom: 2),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: activeSlugs.map((slug) {
+          final cat = _categories.firstWhere((c) => c.slug == slug);
+          final isSelected = _selectedCategory == slug;
+          return InkWell(
+            onTap: () => _handleCategoryTap(slug, cat.label),
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? AppTheme.primaryGreen
+                    : (isDark ? AppTheme.darkLine : Colors.grey.shade200),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Text(
+                cat.label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isSelected
+                      ? Colors.white
+                      : (isDark ? AppTheme.primaryTextDark : Colors.black87),
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  /// Material icon for a category group (emoji do not render on old Android).
+  IconData _groupIcon(String label) {
+    switch (label) {
+      case 'Основни и варива':
+        return Icons.bakery_dining;
+      case 'Мляко и яйца':
+        return Icons.egg_alt;
+      case 'Месо и риба':
+        return Icons.set_meal;
+      case 'Зеленчуци':
+        return Icons.eco;
+      case 'Плодове':
+        return Icons.apple;
+      case 'Сладко':
+        return Icons.cake;
+      case 'Олио и мазнини':
+        return Icons.water_drop;
+      case 'Напитки':
+        return Icons.local_cafe;
+      case 'Алкохол':
+        return Icons.wine_bar;
+      case 'Дом и хигиена':
+        return Icons.cleaning_services;
+      default:
+        return Icons.category;
+    }
   }
 
   /// Search error display.
@@ -762,8 +800,10 @@ class _LocationFilterSheetState extends State<_LocationFilterSheet> {
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
+                  const Icon(Icons.place, size: 18, color: AppTheme.primaryGreen),
+                  const SizedBox(width: 6),
                   Text(
-                    '📍 Локация и филтри',
+                    'Локация и филтри',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: isDark ? AppTheme.primaryTextDark : Colors.black87),
                   ),
                   const Spacer(),
@@ -801,7 +841,7 @@ class _LocationFilterSheetState extends State<_LocationFilterSheet> {
                       const SizedBox(width: 8),
                       FilledButton.icon(
                         onPressed: _useMyLocation,
-                        icon: const Text('📍', style: TextStyle(fontSize: 14)),
+                        icon: const Icon(Icons.my_location, size: 16),
                         label: const Text('моята'),
                       ),
                     ],

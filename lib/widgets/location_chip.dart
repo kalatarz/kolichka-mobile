@@ -37,7 +37,7 @@ class LocationChip extends StatelessWidget {
             ),
             child: Row(
               children: [
-                const Text('📍', style: TextStyle(fontSize: 14)),
+                const Icon(Icons.place, size: 16, color: AppTheme.primaryGreen),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(

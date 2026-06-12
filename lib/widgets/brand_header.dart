@@ -39,7 +39,7 @@ class BrandHeader extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('🛒', style: TextStyle(fontSize: 20)),
+                  const Icon(Icons.shopping_cart, size: 22, color: AppTheme.primaryGreen),
                   const SizedBox(width: 6),
                   Text(
                     'Количка',
@@ -59,7 +59,7 @@ class BrandHeader extends StatelessWidget {
           // Action buttons row
           if (onFavorites != null)
             IconButton(
-              icon: const Text('❤️', style: TextStyle(fontSize: 18)),
+              icon: Icon(Icons.favorite, size: 20, color: isDark ? AppTheme.mutedText : Colors.redAccent),
               onPressed: onFavorites,
               tooltip: 'Любими',
               padding: EdgeInsets.zero,
@@ -68,9 +68,10 @@ class BrandHeader extends StatelessWidget {
 
           if (onThemeToggle != null)
             IconButton(
-              icon: Text(
-                isDark ? '☀️' : '🌙',
-                style: const TextStyle(fontSize: 18),
+              icon: Icon(
+                isDark ? Icons.light_mode : Icons.dark_mode,
+                size: 20,
+                color: isDark ? AppTheme.mutedText : AppTheme.mutedText,
               ),
               onPressed: onThemeToggle,
               tooltip: 'Тема',

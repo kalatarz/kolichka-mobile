@@ -21,28 +21,40 @@ class LocationService {
 
   /// Request location permission and return current position.
   Future<Position> getCurrentPosition() async {
-    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      throw const LocationException('Location services are disabled.');
-    }
-
+    // Resolve permission first. On Android < 6 this is granted at install time
+    // and returns immediately; on newer Android it shows the runtime prompt.
     var status = await Geolocator.checkPermission();
     if (status == LocationPermission.denied) {
       status = await Geolocator.requestPermission();
-      if (status == LocationPermission.denied) {
-        throw const LocationException('Location permission denied.');
-      }
     }
-    if (status == LocationPermission.deniedForever) {
-      throw const LocationException('Location permission permanently denied.');
+    if (status == LocationPermission.denied ||
+        status == LocationPermission.deniedForever) {
+      throw const LocationException('Location permission denied.');
     }
 
-    return await Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        timeLimit: Duration(seconds: 15),
-      ),
-    );
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      // GPS/location services off — best effort with any cached fix.
+      final last = await Geolocator.getLastKnownPosition();
+      if (last != null) return last;
+      throw const LocationException('Location services are disabled.');
+    }
+
+    // Medium accuracy + a generous timeout is far more reliable on old phones
+    // and indoors than a 15s high-accuracy GPS-only request (which times out).
+    try {
+      return await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 30),
+        ),
+      );
+    } catch (_) {
+      // No fresh fix in time — fall back to the last known position.
+      final last = await Geolocator.getLastKnownPosition();
+      if (last != null) return last;
+      rethrow;
+    }
   }
 
   /// Save last known position to persistent storage.

@@ -25,7 +25,7 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
           ListTile(
-            leading: const Text('🛒', style: TextStyle(fontSize: 20)),
+            leading: const Icon(Icons.shopping_cart, size: 24, color: AppTheme.primaryGreen),
             title: const Text('Количка'),
             subtitle: const Text('Сравни цени на хранителни продукти около теб'),
           ),
