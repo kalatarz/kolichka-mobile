@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../widgets/app_theme.dart';
+import '../widgets/feedback_sheet.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -39,7 +40,7 @@ class SettingsScreen extends StatelessWidget {
             title: const Text('Отворен код'),
             subtitle: const Text('GPLv3 лиценз'),
             trailing: const Icon(Icons.open_in_new, size: 16),
-            onTap: () => _launchUrl('https://github.com/kolichka'),
+            onTap: () => _launchUrl('https://github.com/kalatarz/kolichka-mobile'),
           ),
 
           const Divider(height: 32),
@@ -60,10 +61,16 @@ class SettingsScreen extends StatelessWidget {
             onTap: () => _launchUrl('https://kolichka.gotvach.com'),
           ),
           ListTile(
+            leading: const Icon(Icons.star_rate_rounded, size: 24, color: AppTheme.warnAmber),
+            title: const Text('Оцени приложението'),
+            subtitle: const Text('Дай оценка с 5 звезди'),
+            onTap: () => showRatingSheet(context),
+          ),
+          ListTile(
             leading: const Icon(Icons.feedback_outlined, size: 20),
             title: const Text('Обратна връзка'),
-            subtitle: const Text('Споделете мнение или докладвайте проблем'),
-            onTap: () => _launchUrl('mailto:feedback@gotvach.com'),
+            subtitle: const Text('Сподели мнение или докладвай проблем'),
+            onTap: () => showRatingSheet(context),
           ),
 
           const Divider(height: 32),

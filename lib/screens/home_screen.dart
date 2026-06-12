@@ -19,6 +19,7 @@ import '../models/store.dart';
 import '../models/compare_result.dart';
 import '../services/api_service.dart';
 import '../services/location_service.dart';
+import '../services/local_store.dart';
 import '../widgets/app_theme.dart';
 import '../widgets/brand_header.dart';
 import '../widgets/location_chip.dart';
@@ -69,10 +70,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   // Basket FAB badge
   int _basketCount = 0;
 
+  // Favorites (lowercased names) for quick lookup while rendering cards
+  Set<String> _favorites = <String>{};
+
   @override
   void initState() {
     super.initState();
     _init();
+    _refreshLocalState();
   }
 
   @override
@@ -120,6 +125,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _isLoading = false;
         _locationError = false;
       });
+      await _refreshLocalState();
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -228,8 +234,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   /// Navigate to basket screen.
-  void _openBasket() {
-    Navigator.push(
+  Future<void> _openBasket() async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (ctx) => BasketScreen(
@@ -239,6 +245,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ),
       ),
     );
+    await _refreshLocalState();
   }
 
   /// Navigate to promotions screen.
@@ -260,6 +267,61 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (ctx) => const SettingsScreen()),
+    );
+  }
+
+  /// Reload basket count + favorites set from local storage.
+  Future<void> _refreshLocalState() async {
+    final count = await LocalStore.basketCount();
+    final favs = await LocalStore.favorites();
+    if (!mounted) return;
+    setState(() {
+      _basketCount = count;
+      _favorites = favs.map((e) => e.trim().toLowerCase()).toSet();
+    });
+  }
+
+  /// Add a product to the persistent basket.
+  Future<void> _addToBasket(String name) async {
+    final added = await LocalStore.addToBasket(name);
+    await _refreshLocalState();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(added ? 'Добавено в кошницата: $name' : '„$name" вече е в кошницата'),
+        duration: const Duration(seconds: 2),
+        action: SnackBarAction(label: 'Кошница', onPressed: _openBasket),
+      ),
+    );
+  }
+
+  /// Toggle a product as favorite (persisted).
+  Future<void> _toggleFav(String name) async {
+    final nowFav = await LocalStore.toggleFavorite(name);
+    await _refreshLocalState();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(nowFav ? 'Добавено в любими: $name' : 'Премахнато от любими'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  /// Open the favorites bottom sheet.
+  void _openFavorites() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      builder: (ctx) => _FavoritesSheet(
+        onSearch: (q) {
+          Navigator.pop(ctx);
+          _searchController.text = q;
+          _performSearch(q);
+        },
+        onChanged: _refreshLocalState,
+      ),
     );
   }
 
@@ -328,7 +390,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             // 1. Brand header
             BrandHeader(
               onThemeToggle: () {}, // handled globally
-              onFavorites: _openBasket, // favorites are in basket sheet
+              onFavorites: _openFavorites,
               onSettings: _openSettings,
             ),
 
@@ -658,7 +720,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ),
 
         // Exact match product cards
-        ...matches.map((match) => _ProductCard(match: match)),
+        ...matches.map((match) => _ProductCard(
+              match: match,
+              isFav: _favorites.contains(match.display.trim().toLowerCase()),
+              onAddToBasket: () => _addToBasket(match.display),
+              onToggleFav: () => _toggleFav(match.display),
+            )),
 
         // Loose matches section
         if (loose.isNotEmpty) ...[
@@ -1001,8 +1068,16 @@ class _LooseCard extends StatelessWidget {
 /// Product comparison card — matches web v2 design.
 class _ProductCard extends StatelessWidget {
   final MatchResult match;
+  final bool isFav;
+  final VoidCallback onAddToBasket;
+  final VoidCallback onToggleFav;
 
-  const _ProductCard({required this.match});
+  const _ProductCard({
+    required this.match,
+    required this.isFav,
+    required this.onAddToBasket,
+    required this.onToggleFav,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1041,6 +1116,18 @@ class _ProductCard extends StatelessWidget {
                       style: TextStyle(fontSize: 11, color: isDark ? AppTheme.mutedText : AppTheme.mutedText),
                     ),
                   ),
+                IconButton(
+                  onPressed: onToggleFav,
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.only(left: 6),
+                  constraints: const BoxConstraints(),
+                  tooltip: 'Любими',
+                  icon: Icon(
+                    isFav ? Icons.favorite : Icons.favorite_border,
+                    size: 18,
+                    color: isFav ? Colors.redAccent : AppTheme.mutedText,
+                  ),
+                ),
               ],
             ),
 
@@ -1173,9 +1260,7 @@ class _ProductCard extends StatelessWidget {
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () {
-                        // TODO: add to basket
-                      },
+                      onPressed: onAddToBasket,
                       icon: const Icon(Icons.shopping_basket_outlined, size: 16),
                       label: const Text('Добави в кошницата', style: TextStyle(fontSize: 12)),
                       style: OutlinedButton.styleFrom(
@@ -1189,6 +1274,99 @@ class _ProductCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Bottom sheet listing saved favorites. Tap to search, ✕ to remove.
+class _FavoritesSheet extends StatefulWidget {
+  final void Function(String query) onSearch;
+  final Future<void> Function() onChanged;
+
+  const _FavoritesSheet({required this.onSearch, required this.onChanged});
+
+  @override
+  State<_FavoritesSheet> createState() => _FavoritesSheetState();
+}
+
+class _FavoritesSheetState extends State<_FavoritesSheet> {
+  List<String> _favs = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final f = await LocalStore.favorites();
+    if (!mounted) return;
+    setState(() {
+      _favs = f;
+      _loading = false;
+    });
+  }
+
+  Future<void> _remove(String item) async {
+    await LocalStore.removeFavorite(item);
+    await widget.onChanged();
+    await _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                const Icon(Icons.favorite, size: 18, color: Colors.redAccent),
+                const SizedBox(width: 6),
+                Text('Любими',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: isDark ? AppTheme.primaryTextDark : Colors.black87)),
+                const Spacer(),
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Затвори')),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          if (_loading)
+            const Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator())
+          else if (_favs.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('Нямаш любими още. Натисни ♥ върху продукт, за да го запазиш.',
+                  textAlign: TextAlign.center, style: TextStyle(color: AppTheme.mutedText)),
+            )
+          else
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: _favs.length,
+                itemBuilder: (ctx, i) {
+                  final f = _favs[i];
+                  return ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.favorite, size: 16, color: Colors.redAccent),
+                    title: Text(f, style: const TextStyle(fontSize: 14)),
+                    onTap: () => widget.onSearch(f),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.close, size: 18),
+                      onPressed: () => _remove(f),
+                    ),
+                  );
+                },
+              ),
+            ),
+          const SizedBox(height: 12),
+        ],
       ),
     );
   }

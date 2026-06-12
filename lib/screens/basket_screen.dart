@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 import '../models/basket_result.dart';
 import '../services/api_service.dart';
+import '../services/local_store.dart';
 import '../widgets/app_theme.dart';
 
 class BasketScreen extends StatefulWidget {
@@ -31,17 +32,43 @@ class _BasketScreenState extends State<BasketScreen> {
   bool _loading = false;
   String? _error;
 
+  @override
+  void initState() {
+    super.initState();
+    _loadAndCompare();
+  }
+
+  /// Load the persisted basket and, if it has items, compare immediately.
+  Future<void> _loadAndCompare() async {
+    final saved = await LocalStore.basket();
+    if (!mounted) return;
+    setState(() {
+      _items
+        ..clear()
+        ..addAll(saved);
+    });
+    if (_items.isNotEmpty) _compare();
+  }
+
+  Future<void> _persist() => LocalStore.setBasket(_items);
+
   void _addItem() {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
+    if (_items.any((e) => e.toLowerCase() == text.toLowerCase())) {
+      _controller.clear();
+      return;
+    }
     setState(() {
       _items.add(text);
       _controller.clear();
     });
+    _persist();
   }
 
   void _removeItem(int index) {
     setState(() => _items.removeAt(index));
+    _persist();
   }
 
   Future<void> _compare() async {
@@ -72,7 +99,24 @@ class _BasketScreenState extends State<BasketScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Кошница')),
+      appBar: AppBar(
+        title: const Text('Кошница'),
+        actions: [
+          if (_items.isNotEmpty)
+            IconButton(
+              tooltip: 'Изчисти',
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () async {
+                await LocalStore.clearBasket();
+                if (!mounted) return;
+                setState(() {
+                  _items.clear();
+                  _result = null;
+                });
+              },
+            ),
+        ],
+      ),
       body: Column(
         children: [
           // Input area
