@@ -27,6 +27,7 @@ import '../widgets/location_chip.dart';
 import '../widgets/search_bar.dart';
 import '../widgets/radius_segment.dart';
 import '../data/cat_groups.dart';
+import '../widgets/chain_colors.dart';
 import 'basket_screen.dart';
 import 'map_screen.dart';
 import 'promotions_screen.dart';
@@ -65,6 +66,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _searching = false;
   String? _searchError;
   String? _lastQuery;
+  final Set<String> _chainFilter = <String>{}; // selected chain slugs in results
 
   // Stores count for display
   int _storesCount = 0;
@@ -157,6 +159,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _searching = true;
       _searchError = null;
       _lastQuery = displayQuery ?? query;
+      _chainFilter.clear();
     });
     Analytics.instance.track('search', {
       'kind': query.startsWith('cat:') ? 'category' : 'text',
@@ -702,10 +705,80 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   /// Results section — mirrors web v2 results layout.
+  /// Horizontal chain-filter chips above the results (colored dots, like web).
+  Widget _buildChainFilter(Map<String, String> chains) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final entries = chains.entries.toList()
+      ..sort((a, b) => prettyChainName(a.value).compareTo(prettyChainName(b.value)));
+    return SizedBox(
+      height: 40,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        itemCount: entries.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 6),
+        itemBuilder: (ctx, i) {
+          final slug = entries[i].key;
+          final name = prettyChainName(entries[i].value);
+          final sel = _chainFilter.contains(slug);
+          return InkWell(
+            onTap: () => setState(() {
+              if (sel) {
+                _chainFilter.remove(slug);
+              } else {
+                _chainFilter.add(slug);
+              }
+            }),
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: sel
+                    ? chainColor(slug).withOpacity(0.18)
+                    : (isDark ? AppTheme.darkLine : Colors.grey.shade100),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                    color: sel ? chainColor(slug) : (isDark ? AppTheme.darkLine : AppTheme.lightLine)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 9,
+                    height: 9,
+                    decoration: BoxDecoration(color: chainColor(slug), shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(name,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: sel ? FontWeight.w600 : FontWeight.normal,
+                        color: isDark ? AppTheme.primaryTextDark : Colors.black87,
+                      )),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildResults() {
     final result = _currentResult!;
     final matches = result.matches;
     final loose = result.loose;
+    final chainsPresent = <String, String>{};
+    for (final m in matches) {
+      for (final c in m.chains) {
+        chainsPresent.putIfAbsent(c.chainSlug, () => c.chainName);
+      }
+    }
+    final filtered = _chainFilter.isEmpty
+        ? matches
+        : matches
+            .where((m) => m.chains.any((c) => _chainFilter.contains(c.chainSlug)))
+            .toList();
 
     if (matches.isEmpty && loose.isEmpty) {
       return Padding(
@@ -757,8 +830,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ),
         ),
 
-        // Exact match product cards
-        ...matches.map((match) => _ProductCard(
+        if (chainsPresent.length > 1) _buildChainFilter(chainsPresent),
+
+        if (filtered.isEmpty && _chainFilter.isNotEmpty)
+          const Padding(
+            padding: EdgeInsets.all(20),
+            child: Center(
+              child: Text('Няма продукти за избраните вериги.',
+                  style: TextStyle(color: AppTheme.mutedText)),
+            ),
+          ),
+
+        // Exact match product cards (filtered by chain)
+        ...filtered.map((match) => _ProductCard(
               match: match,
               isFav: _favorites.contains(match.display.trim().toLowerCase()),
               onAddToBasket: () => _addToBasket(match.display),
