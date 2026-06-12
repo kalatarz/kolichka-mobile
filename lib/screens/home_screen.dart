@@ -287,6 +287,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  /// Open the store map.
+  void _openMap() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (ctx) => MapScreen(lat: _lat, lng: _lng, radiusKm: _radiusKm),
+      ),
+    );
+  }
+
   /// Navigate to settings screen.
   void _openSettings() {
     Navigator.push(
@@ -786,6 +796,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: 'Начало'),
           BottomNavigationBarItem(icon: Icon(Icons.local_offer_outlined), label: 'Промоции'),
+          BottomNavigationBarItem(icon: Icon(Icons.map_outlined), label: 'Карта'),
           BottomNavigationBarItem(icon: Icon(Icons.settings_outlined), label: 'Настройки'),
         ],
         onTap: (idx) {
@@ -796,6 +807,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               _openPromotions();
               break;
             case 2:
+              _openMap();
+              break;
+            case 3:
               _openSettings();
               break;
           }
