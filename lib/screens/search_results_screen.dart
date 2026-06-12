@@ -210,12 +210,12 @@ class MatchCard extends StatelessWidget {
                         style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
                       ),
                       Text(
-                        '${match.cheapest.minPrice.toStringAsFixed(2)} лв',
+                        '${match.cheapest.minPrice.toStringAsFixed(2)} €',
                         style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.accentGreen),
                       ),
                       if (match.cheapest.isPromo)
                         Text(
-                          'на цена от ${match.cheapest.priceRetail!.toStringAsFixed(2)} лв (-${match.cheapest.pctOff}%)',
+                          'на цена от ${match.cheapest.priceRetail!.toStringAsFixed(2)} € (-${match.cheapest.pctOff}%)',
                           style: const TextStyle(fontSize: 10, color: AppTheme.warnAmber),
                         ),
                     ],
@@ -234,7 +234,7 @@ class MatchCard extends StatelessWidget {
                           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                         ),
                         Text(
-                          '${match.spread!.min.toStringAsFixed(2)} — ${match.spread!.max.toStringAsFixed(2)} лв',
+                          '${match.spread!.min.toStringAsFixed(2)} — ${match.spread!.max.toStringAsFixed(2)} €',
                           style: TextStyle(fontSize: 11, color: AppTheme.mutedText),
                         ),
                         Text(
@@ -272,7 +272,7 @@ class MatchCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        '${chain.minPrice.toStringAsFixed(2)} лв',
+                        '${chain.minPrice.toStringAsFixed(2)} €',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
@@ -318,7 +318,7 @@ class MatchCard extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text('${c.minPrice.toStringAsFixed(2)} лв',
+                      Text('${c.minPrice.toStringAsFixed(2)} €',
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                       if (c.isPromo)
                         Text('от ${c.priceRetail!.toStringAsFixed(2)} (-${c.pctOff}%)',
@@ -351,7 +351,7 @@ class LooseCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(
-              '${loose.price.toStringAsFixed(2)} лв',
+              '${loose.price.toStringAsFixed(2)} €',
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
             ),
             if (loose.distM != null)

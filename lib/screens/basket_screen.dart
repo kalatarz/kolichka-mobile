@@ -7,6 +7,7 @@ import '../services/api_service.dart';
 import '../services/local_store.dart';
 import '../services/analytics.dart';
 import 'package:share_plus/share_plus.dart';
+import '../services/external.dart';
 import '../widgets/app_theme.dart';
 
 class BasketScreen extends StatefulWidget {
@@ -299,7 +300,7 @@ class _BasketScreenState extends State<BasketScreen> {
                         ),
                         const Spacer(),
                         Text(
-                          '${result.mixedOptimal!.total.toStringAsFixed(2)} лв',
+                          '${result.mixedOptimal!.total.toStringAsFixed(2)} €',
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
@@ -322,7 +323,7 @@ class _BasketScreenState extends State<BasketScreen> {
                           Text(item.chainName, style: const TextStyle(fontSize: 12)),
                           const SizedBox(width: 8),
                           Text(
-                            '${item.price.toStringAsFixed(2)} лв',
+                            '${item.price.toStringAsFixed(2)} €',
                             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                           ),
                         ],
@@ -374,15 +375,27 @@ class _StoreCard extends StatelessWidget {
                         '${store.distanceText} · ${store.itemsFound}/${store.itemsTotal} продукта',
                         style: TextStyle(fontSize: 11, color: AppTheme.mutedText),
                       ),
+                      if (store.address.isNotEmpty)
+                        Text(
+                          store.address,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 11, color: AppTheme.mutedText),
+                        ),
                     ],
                   ),
+                ),
+                IconButton(
+                  tooltip: 'Навигация',
+                  icon: const Icon(Icons.directions, color: AppTheme.primaryGreen),
+                  onPressed: () => openInMaps(store.lat, store.lng),
                 ),
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      '${store.total.toStringAsFixed(2)} лв',
+                      '${store.total.toStringAsFixed(2)} €',
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppTheme.accentGreen),
                     ),
                     if (store.complete)
@@ -416,7 +429,7 @@ class _StoreCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    '${item.price.toStringAsFixed(2)} лв',
+                    '${item.price.toStringAsFixed(2)} €',
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                   ),
                 ],

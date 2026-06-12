@@ -158,7 +158,7 @@ class ChainPromoCard extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.only(right: 6),
                       child: Text(
-                        '${item.priceRetail.toStringAsFixed(2)} лв',
+                        '${item.priceRetail.toStringAsFixed(2)} €',
                         style: TextStyle(
                           fontSize: 11,
                           color: AppTheme.mutedText,
@@ -168,7 +168,7 @@ class ChainPromoCard extends StatelessWidget {
                     ),
                   // Promo price
                   Text(
-                    '${item.pricePromo.toStringAsFixed(2)} лв',
+                    '${item.pricePromo.toStringAsFixed(2)} €',
                     style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(width: 6),

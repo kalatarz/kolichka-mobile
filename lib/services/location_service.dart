@@ -40,13 +40,15 @@ class LocationService {
       throw const LocationException('Location services are disabled.');
     }
 
-    // Medium accuracy + a generous timeout is far more reliable on old phones
-    // and indoors than a 15s high-accuracy GPS-only request (which times out).
+    // High accuracy for a precise, neighbourhood-level fix (e.g. Малинова долина)
+    // with a generous 60s budget — a first cold GPS fix can take a while. This
+    // runs in the background (HomeScreen._upgradeLocation), so the long timeout
+    // never blocks app startup.
     try {
       return await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.medium,
-          timeLimit: Duration(seconds: 30),
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 60),
         ),
       );
     } catch (_) {

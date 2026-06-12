@@ -93,29 +93,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _init() async {
     setState(() => _isLoading = true);
     try {
-      // Try GPS first, fall back to saved position
-      Position? pos;
-      String? address;
-      try {
-        pos = await _location.getCurrentPosition();
-        Analytics.instance.track('location_ok');
-      } on Exception catch (_) {
-        Analytics.instance.track('location_fail');
-        pos = await _location.getLastPosition();
-        address = await _location.getLastAddress();
+      // 1) Instant: render with the last saved location (no GPS wait, so the
+      //    initial open never times out). Falls back to the Sofia default.
+      final saved = await _location.getLastPosition();
+      final savedAddress = await _location.getLastAddress();
+      if (saved != null) {
+        _lat = saved.latitude;
+        _lng = saved.longitude;
       }
 
-      if (pos != null) {
-        final currentPos = pos;
-        setState(() {
-          _lat = currentPos.latitude;
-          _lng = currentPos.longitude;
-        });
-        address ??= 'Моето местоположение';
-        await _location.savePosition(pos, address: address);
-      }
-
-      // Load categories and stores in parallel
       final results = await Future.wait([
         _api.getCategories(),
         _api.getNearbyStores(_lat, _lng, radiusKm: _radiusKm),
@@ -125,16 +111,41 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _categories = results[0] as List<Category>;
         final stores = results[1] as List<Store>;
         _storesCount = stores.length;
-        _locationLabel = address ?? 'Моето местоположение';
+        _locationLabel = savedAddress ?? 'Моето местоположение';
         _isLoading = false;
         _locationError = false;
       });
       await _refreshLocalState();
+      // 2) Background: get a precise GPS fix and snap the UI to it.
+      _upgradeLocation();
     } catch (e) {
       setState(() {
         _isLoading = false;
         _locationError = true;
       });
+    }
+  }
+
+  /// Background-fetch a precise GPS fix (high accuracy) and snap to it. Never
+  /// blocks startup; on permission-deny or timeout it silently keeps the
+  /// last-known location.
+  Future<void> _upgradeLocation() async {
+    try {
+      final pos = await _location.getCurrentPosition();
+      if (!mounted) return;
+      Analytics.instance.track('location_ok');
+      setState(() {
+        _lat = pos.latitude;
+        _lng = pos.longitude;
+        _locationLabel = 'Моето местоположение';
+      });
+      await _location.savePosition(pos, address: 'Моето местоположение');
+      try {
+        final stores = await _api.getNearbyStores(_lat, _lng, radiusKm: _radiusKm);
+        if (mounted) setState(() => _storesCount = stores.length);
+      } catch (_) {}
+    } catch (_) {
+      Analytics.instance.track('location_fail');
     }
   }
 
@@ -1077,7 +1088,7 @@ class _LooseCard extends StatelessWidget {
              crossAxisAlignment: CrossAxisAlignment.end,
              children: [
                Text(
-                 '${loose.price.toStringAsFixed(2)} лв',
+                 '${loose.price.toStringAsFixed(2)} €',
                  style: TextStyle(
                    fontSize: 16,
                    fontWeight: FontWeight.bold,
@@ -1086,7 +1097,7 @@ class _LooseCard extends StatelessWidget {
                ),
                if (isPromo && loose.priceRetail != null) ...[
                  Text(
-                   '${loose.priceRetail!.toStringAsFixed(2)} лв',
+                   '${loose.priceRetail!.toStringAsFixed(2)} €',
                    style: TextStyle(fontSize: 10, decoration: TextDecoration.lineThrough, color: AppTheme.mutedText),
                  ),
                ],
@@ -1201,7 +1212,7 @@ class _ProductCard extends StatelessWidget {
                               if (match.cheapest.priceRetail != null) ...[
                                 const SizedBox(width: 6),
                                 Text(
-                                  '${match.cheapest.priceRetail?.toStringAsFixed(2) ?? ''} лв',
+                                  '${match.cheapest.priceRetail?.toStringAsFixed(2) ?? ''} €',
                                   style: TextStyle(
                                     fontSize: 10,
                                     decoration: TextDecoration.lineThrough,
@@ -1218,7 +1229,7 @@ class _ProductCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        '${match.cheapest.minPrice.toStringAsFixed(2)} лв',
+                        '${match.cheapest.minPrice.toStringAsFixed(2)} €',
                         style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.accentGreen),
                       ),
                       if (match.cheapest.nStores != null && match.cheapest.nStores! > 1)
@@ -1260,7 +1271,7 @@ class _ProductCard extends StatelessWidget {
                     const SizedBox(width: 6),
                   ],
                   Text(
-                    '${chain.minPrice.toStringAsFixed(2)} лв',
+                    '${chain.minPrice.toStringAsFixed(2)} €',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -1280,7 +1291,7 @@ class _ProductCard extends StatelessWidget {
                     Icon(Icons.info_outline, size: 12, color: AppTheme.mutedText),
                     const SizedBox(width: 4),
                     Text(
-                      'Разлика ${match.spread!.pct}% (${match.spread!.min.toStringAsFixed(2)} — ${match.spread!.max.toStringAsFixed(2)} лв)',
+                      'Разлика ${match.spread!.pct}% (${match.spread!.min.toStringAsFixed(2)} — ${match.spread!.max.toStringAsFixed(2)} €)',
                       style: TextStyle(fontSize: 10, color: AppTheme.mutedText),
                     ),
                   ],

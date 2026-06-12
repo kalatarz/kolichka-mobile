@@ -8,6 +8,7 @@ import '../models/store.dart';
 import '../services/api_service.dart';
 import '../services/analytics.dart';
 import '../widgets/app_theme.dart';
+import '../services/external.dart';
 
 class MapScreen extends StatefulWidget {
   final double lat;
@@ -114,9 +115,19 @@ class _MapScreenState extends State<MapScreen> {
                   subtitle: Text(
                     '${_selected!.address}${_selected!.distanceText != null ? ' · ${_selected!.distanceText}' : ''}',
                   ),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => setState(() => _selected = null),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: 'Навигация',
+                        icon: const Icon(Icons.directions, color: AppTheme.primaryGreen),
+                        onPressed: () => openInMaps(_selected!.lat, _selected!.lng),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => setState(() => _selected = null),
+                      ),
+                    ],
                   ),
                 ),
               ),
