@@ -15,6 +15,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../config.dart';
 
 class Analytics {
   Analytics._();
@@ -77,7 +78,8 @@ class Analytics {
       final data = <String, dynamic>{
         'install_id': _installId,
         'cohort': _cohort,
-        'app_version': _appVersion,
+        'app_version': Config.appVersion,
+        'build': Config.appBuild,
         'platform': 'android',
         if (props != null) ...props,
       };

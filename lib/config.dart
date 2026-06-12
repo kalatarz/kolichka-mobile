@@ -15,6 +15,15 @@ const String? _localApiBaseUrl = null;
 class Config {
   Config._();
 
+  /// App version, set at startup from the build (see main.dart).
+  static String appVersion = '1.0.0';
+  static String appBuild = '1';
+
+  /// User-Agent sent on every API call so the platform can see app traffic
+  /// + which version is visiting (grep server logs for 'KolichkaApp').
+  static String get userAgent =>
+      'KolichkaApp/\$appVersion (Android; build \$appBuild)';
+
   /// Base URL for the Kolichka API.
   /// In production this points to the public domain.
   /// During development you can override via [_localApiBaseUrl].

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../widgets/app_theme.dart';
 import '../widgets/feedback_sheet.dart';
+import '../config.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -33,7 +34,7 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.code, size: 20),
             title: const Text('Версия'),
-            subtitle: const Text('1.0.0'),
+            subtitle: Text('${Config.appVersion} (${Config.appBuild})'),
           ),
           ListTile(
             leading: const Icon(Icons.info_outline, size: 20),
@@ -87,7 +88,15 @@ class SettingsScreen extends StatelessWidget {
             leading: const Icon(Icons.privacy_tip_outlined, size: 20),
             title: const Text('Поверителност'),
             subtitle: const Text('Политика за поверителност'),
-            onTap: () => _launchUrl('mailto:privacy@gotvach.com'),
+            trailing: const Icon(Icons.open_in_new, size: 16),
+            onTap: () => _launchUrl('https://kolichka.gotvach.com/privacy.html'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.gavel_outlined, size: 20),
+            title: const Text('Условия за ползване'),
+            subtitle: const Text('Общи условия'),
+            trailing: const Icon(Icons.open_in_new, size: 16),
+            onTap: () => _launchUrl('https://kolichka.gotvach.com/terms.html'),
           ),
           ListTile(
             leading: const Icon(Icons.description_outlined, size: 20),

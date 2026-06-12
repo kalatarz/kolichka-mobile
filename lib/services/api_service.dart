@@ -34,7 +34,7 @@ class ApiService {
   Future<Map<String, dynamic>> _get(String path, {Map<String, String>? params}) async {
     final uri = Uri.parse('${Config.apiBaseUrl}$path').replace(queryParameters: params);
     try {
-      final response = await _client.get(uri).timeout(const Duration(seconds: 30));
+      final response = await _client.get(uri, headers: {'User-Agent': Config.userAgent}).timeout(const Duration(seconds: 30));
       if (response.statusCode >= 500) {
         throw ApiException('Server error (${response.statusCode})', statusCode: response.statusCode);
       }
@@ -59,7 +59,7 @@ class ApiService {
   Future<List<dynamic>> _getList(String path, {Map<String, String>? params}) async {
     final uri = Uri.parse('${Config.apiBaseUrl}$path').replace(queryParameters: params);
     try {
-      final response = await _client.get(uri).timeout(const Duration(seconds: 30));
+      final response = await _client.get(uri, headers: {'User-Agent': Config.userAgent}).timeout(const Duration(seconds: 30));
       if (response.statusCode >= 500) {
         throw ApiException('Server error (${response.statusCode})', statusCode: response.statusCode);
       }
@@ -215,7 +215,7 @@ class ApiService {
     try {
       final response = await _client.post(
         uri,
-        headers: {'Content-Type': 'application/json'},
+        headers: {'Content-Type': 'application/json', 'User-Agent': Config.userAgent},
         body: jsonEncode(body),
       ).timeout(const Duration(seconds: 15));
       if (response.statusCode != 200 && response.statusCode != 201) {
