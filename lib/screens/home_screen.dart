@@ -20,6 +20,7 @@ import '../models/compare_result.dart';
 import '../services/api_service.dart';
 import '../services/location_service.dart';
 import '../services/local_store.dart';
+import '../services/analytics.dart';
 import '../widgets/app_theme.dart';
 import '../widgets/brand_header.dart';
 import '../widgets/location_chip.dart';
@@ -96,7 +97,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       String? address;
       try {
         pos = await _location.getCurrentPosition();
+        Analytics.instance.track('location_ok');
       } on Exception catch (_) {
+        Analytics.instance.track('location_fail');
         pos = await _location.getLastPosition();
         address = await _location.getLastAddress();
       }
@@ -143,6 +146,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _searchError = null;
       _lastQuery = displayQuery ?? query;
     });
+    Analytics.instance.track('search', {
+      'kind': query.startsWith('cat:') ? 'category' : 'text',
+      if (query.startsWith('cat:')) 'slug': query.substring(4),
+    });
 
     try {
       final result = await _api.compare(
@@ -154,6 +161,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       setState(() {
         _currentResult = result;
         _searching = false;
+      });
+      Analytics.instance.track('saw_prices', {
+        'results': result.matches.length + result.loose.length,
+        'matches': result.matches.length,
       });
 
       // Scroll to results
@@ -235,6 +246,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   /// Navigate to basket screen.
   Future<void> _openBasket() async {
+    Analytics.instance.track('open_basket');
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -250,6 +262,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   /// Navigate to promotions screen.
   void _openPromotions() {
+    Analytics.instance.track('open_promotions');
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -284,6 +297,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   /// Add a product to the persistent basket.
   Future<void> _addToBasket(String name) async {
     final added = await LocalStore.addToBasket(name);
+    Analytics.instance.track('add_to_basket', {'new': added});
     await _refreshLocalState();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -298,6 +312,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   /// Toggle a product as favorite (persisted).
   Future<void> _toggleFav(String name) async {
     final nowFav = await LocalStore.toggleFavorite(name);
+    Analytics.instance.track(nowFav ? 'favorite_add' : 'favorite_remove');
     await _refreshLocalState();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -310,6 +325,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   /// Open the favorites bottom sheet.
   void _openFavorites() {
+    Analytics.instance.track('open_favorites');
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,

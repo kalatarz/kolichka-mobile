@@ -13,9 +13,11 @@ library;
 import 'package:flutter/material.dart';
 import 'widgets/app_theme.dart';
 import 'screens/home_screen.dart';
+import 'services/analytics.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  Analytics.instance.init().then((_) => Analytics.instance.track('app_open'));
   runApp(const KolichkaApp());
 }
 

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/basket_result.dart';
 import '../services/api_service.dart';
 import '../services/local_store.dart';
+import '../services/analytics.dart';
 import '../widgets/app_theme.dart';
 
 class BasketScreen extends StatefulWidget {
@@ -87,6 +88,10 @@ class _BasketScreenState extends State<BasketScreen> {
       setState(() {
         _result = result;
         _loading = false;
+      });
+      Analytics.instance.track('compare_basket', {
+        'items': _items.length,
+        'stores': result.count,
       });
     } catch (e) {
       setState(() {

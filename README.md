@@ -104,3 +104,25 @@ This project is licensed under the GNU General Public License v3.0 — see the [
 ## Credits
 
 Built with Flutter. Map tiles by OpenStreetMap contributors.
+
+## Analytics (official builds only)
+
+Optional, anonymous product analytics — **off by default**. Building from source
+produces a build that sends **no** data. The official Google Play build turns it
+on via build flags:
+
+```
+flutter build apk --release \
+  --dart-define=ANALYTICS_ENABLED=true \
+  --dart-define=UMAMI_WEBSITE_ID=<umami-website-uuid> \
+  --dart-define=APP_VERSION=1.0.0
+```
+
+Events go to a self-hosted [Umami](https://umami.is) instance via `/api/send`.
+No PII: only a random per-install id (not the device/ad id), the install-date
+cohort, app version, and funnel events (`first_open`, `app_open`,
+`location_ok`/`location_fail`, `search`, `saw_prices`, `add_to_basket`,
+`favorite_add`/`favorite_remove`, `open_basket`, `compare_basket`,
+`rating_submitted`). The drop-off between `app_open` and `saw_prices` is the
+onboarding-leak signal. Actual installs/uninstalls and retention cohorts come
+from Google Play Console.

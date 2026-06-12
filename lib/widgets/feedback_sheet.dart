@@ -11,6 +11,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:in_app_review/in_app_review.dart';
 import '../services/api_service.dart';
+import '../services/analytics.dart';
 import 'app_theme.dart';
 
 Future<void> showRatingSheet(BuildContext context) {
@@ -58,6 +59,10 @@ class _RatingSheetState extends State<_RatingSheet> {
     } catch (_) {
       // Still thank the user even if the network call fails.
     }
+    Analytics.instance.track('rating_submitted', {
+      'stars': _rating,
+      'has_comment': comment.isNotEmpty,
+    });
 
     // Happy users → nudge a public Google Play review.
     if (_rating >= 4) {
