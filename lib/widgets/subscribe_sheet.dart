@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/location_service.dart';
 import '../services/analytics.dart';
-import 'app_theme.dart';
 
 Future<void> showSubscribeSheet(BuildContext context) {
   return showModalBottomSheet<void>(
@@ -74,7 +73,7 @@ class _SubscribeSheetState extends State<_SubscribeSheet> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textColor = isDark ? AppTheme.primaryTextDark : Colors.black87;
+    final textColor = isDark ? Theme.of(context).colorScheme.onSurface : Colors.black87;
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Padding(
@@ -89,7 +88,7 @@ class _SubscribeSheetState extends State<_SubscribeSheet> {
       mainAxisSize: MainAxisSize.min,
       children: [
         const SizedBox(height: 8),
-        const Icon(Icons.mark_email_read, size: 44, color: AppTheme.primaryGreen),
+        Icon(Icons.mark_email_read, size: 44, color: Theme.of(context).colorScheme.primary),
         const SizedBox(height: 12),
         Text('Провери имейла си за потвърждение.',
             textAlign: TextAlign.center,
@@ -116,10 +115,10 @@ class _SubscribeSheetState extends State<_SubscribeSheet> {
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: textColor)),
         ),
         const SizedBox(height: 4),
-        const Center(
+        Center(
           child: Text('Най-добрите цени около теб, веднъж седмично.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: AppTheme.mutedText)),
+              style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
         ),
         const SizedBox(height: 14),
         TextField(

@@ -3,7 +3,6 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../widgets/app_theme.dart';
 import '../widgets/feedback_sheet.dart';
 import '../config.dart';
 import '../widgets/subscribe_sheet.dart';
@@ -24,11 +23,11 @@ class SettingsScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: Text(
               'За приложението',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.mutedText),
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ),
           ListTile(
-            leading: const Icon(Icons.shopping_cart, size: 24, color: AppTheme.primaryGreen),
+            leading: Icon(Icons.shopping_cart, size: 24, color: Theme.of(context).colorScheme.primary),
             title: const Text('Количка'),
             subtitle: const Text('Сравни цени на хранителни продукти около теб'),
           ),
@@ -52,7 +51,7 @@ class SettingsScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
             child: Text(
               'Връзки',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.mutedText),
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ),
           ListTile(
@@ -63,13 +62,13 @@ class SettingsScreen extends StatelessWidget {
             onTap: () => _launchUrl('https://kolichka.gotvach.com'),
           ),
           ListTile(
-            leading: const Icon(Icons.mark_email_read_outlined, size: 22, color: AppTheme.primaryGreen),
+            leading: Icon(Icons.mark_email_read_outlined, size: 22, color: Theme.of(context).colorScheme.primary),
             title: const Text('Седмични оферти по имейл'),
             subtitle: const Text('Получавай най-добрите цени около теб'),
             onTap: () => showSubscribeSheet(context),
           ),
           ListTile(
-            leading: const Icon(Icons.star_rate_rounded, size: 24, color: AppTheme.warnAmber),
+            leading: const Icon(Icons.star_rate_rounded, size: 24, color: Colors.amber),
             title: const Text('Оцени приложението'),
             subtitle: const Text('Дай оценка с 5 звезди'),
             onTap: () => showRatingSheet(context),
@@ -88,7 +87,7 @@ class SettingsScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
             child: Text(
               'Правна информация',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.mutedText),
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ),
           ListTile(
@@ -119,7 +118,7 @@ class SettingsScreen extends StatelessWidget {
             child: Text(
               'Данните се предоставят от Количка (kolichka.gotvach.com). Цените са информативни.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11, color: AppTheme.mutedText),
+              style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ),
         ],

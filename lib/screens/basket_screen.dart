@@ -8,7 +8,6 @@ import '../services/local_store.dart';
 import '../services/analytics.dart';
 import 'package:share_plus/share_plus.dart';
 import '../services/external.dart';
-import '../widgets/app_theme.dart';
 
 class BasketScreen extends StatefulWidget {
   final double lat;
@@ -194,8 +193,8 @@ class _BasketScreenState extends State<BasketScreen> {
             SelectableText(_famCode!,
                 style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 2)),
             const SizedBox(height: 8),
-            const Text('Всеки с този код вижда и редактира същия списък — отметки и премахвания се синхронизират на всички устройства.',
-                style: TextStyle(fontSize: 12, color: AppTheme.mutedText)),
+            Text('Всеки с този код вижда и редактира същия списък — отметки и премахвания се синхронизират на всички устройства.',
+                style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
           ]),
           actions: [
             TextButton(onPressed: () { Navigator.pop(ctx); _shareFamCode(); }, child: const Text('Сподели')),
@@ -219,7 +218,7 @@ class _BasketScreenState extends State<BasketScreen> {
             onPressed: () { Navigator.pop(ctx); _famCreate(); },
             icon: const Icon(Icons.add), label: const Text('Създай нова'))),
           const SizedBox(height: 12),
-          const Text('или въведи код:', style: TextStyle(fontSize: 12, color: AppTheme.mutedText)),
+          Text('или въведи код:', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
           const SizedBox(height: 6),
           Row(children: [
             Expanded(child: TextField(controller: joinCtrl,
@@ -314,7 +313,7 @@ class _BasketScreenState extends State<BasketScreen> {
           IconButton(
             tooltip: 'Семейна кошница',
             icon: Icon(_famCode != null ? Icons.groups : Icons.group_add_outlined,
-                color: _famCode != null ? AppTheme.primaryGreen : null),
+                color: _famCode != null ? Theme.of(context).colorScheme.primary : null),
             onPressed: _openFamDialog,
           ),
           if (_items.isNotEmpty)
@@ -345,15 +344,15 @@ class _BasketScreenState extends State<BasketScreen> {
           if (_famCode != null)
             Container(
               width: double.infinity,
-              color: AppTheme.primaryGreen.withOpacity(0.12),
+              color: Theme.of(context).colorScheme.primary.withOpacity(0.12),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               child: Row(children: [
-                const Icon(Icons.groups, size: 16, color: AppTheme.primaryGreen),
+                Icon(Icons.groups, size: 16, color: Theme.of(context).colorScheme.primary),
                 const SizedBox(width: 6),
                 Expanded(child: Text('Семейна кошница · код $_famCode',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primaryGreen))),
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.primary))),
                 InkWell(onTap: () => _famLoad(),
-                    child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.refresh, size: 18, color: AppTheme.primaryGreen))),
+                    child: Padding(padding: EdgeInsets.all(4), child: Icon(Icons.refresh, size: 18, color: Theme.of(context).colorScheme.primary))),
               ]),
             ),
           // Add-item row
@@ -422,11 +421,11 @@ class _BasketScreenState extends State<BasketScreen> {
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
       child: Row(
         children: [
-          const Text('Списък за пазаруване',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.mutedText)),
+          Text('Списък за пазаруване',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurfaceVariant)),
           const Spacer(),
           Text('$bought / ${_items.length} купени',
-              style: const TextStyle(fontSize: 12, color: AppTheme.mutedText)),
+              style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
         ],
       ),
     );
@@ -434,33 +433,33 @@ class _BasketScreenState extends State<BasketScreen> {
 
   List<Widget> _buildChecklist() {
     if (_items.isEmpty) {
-      return const [
+      return [
         Padding(
           padding: EdgeInsets.fromLTRB(24, 28, 24, 12),
           child: Text(
             'Добави продукти, които искаш да купиш. Отметни ги, щом ги вземеш.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: AppTheme.mutedText),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
         ),
       ];
     }
     return _items.asMap().entries.map((e) {
       final i = e.key;
+
       final item = e.value;
       final bought = _bought.contains(item.trim().toLowerCase());
       return ListTile(
         dense: true,
         leading: Checkbox(
           value: bought,
-          activeColor: AppTheme.primaryGreen,
+          activeColor: Theme.of(context).colorScheme.primary,
           onChanged: (_) => _toggleBought(item),
         ),
         title: Text(
           item,
           style: TextStyle(
             decoration: bought ? TextDecoration.lineThrough : null,
-            color: bought ? AppTheme.mutedText : null,
+            color: bought ? Theme.of(context).colorScheme.onSurfaceVariant : null,
           ),
         ),
         trailing: IconButton(
@@ -490,7 +489,7 @@ class _BasketScreenState extends State<BasketScreen> {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.star, color: AppTheme.warnAmber, size: 18),
+                        const Icon(Icons.star, color: Colors.amber, size: 18),
                         const SizedBox(width: 6),
                         const Text(
                           'Най-евтино (разделено)',
@@ -499,18 +498,18 @@ class _BasketScreenState extends State<BasketScreen> {
                         const Spacer(),
                         Text(
                           '${result.mixedOptimal!.total.toStringAsFixed(2)} €',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
-                            color: AppTheme.accentGreen,
+                            color: Theme.of(context).colorScheme.secondary,
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${result.mixedOptimal!.storesCount} магазина, ${result.mixedOptimal!.itemsFound}/${result.mixedOptimal!.itemsTotal} продукта',
-                      style: TextStyle(fontSize: 11, color: AppTheme.mutedText),
+                      '${result.mixedOptimal!.storesCount} магазинa, ${result.mixedOptimal!.itemsFound}/${result.mixedOptimal!.itemsTotal} продукта',
+                      style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
                     ),
                     const SizedBox(height: 8),
                     ...result.mixedOptimal!.breakdown.map((item) => Padding(
@@ -557,9 +556,13 @@ class _StoreCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
+      child: InkWell(
+        onTap: () {
+          // Future: Navigate to store details
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
@@ -571,21 +574,21 @@ class _StoreCard extends StatelessWidget {
                       Text(store.chainName, style: const TextStyle(fontWeight: FontWeight.bold)),
                       Text(
                         '${store.distanceText} · ${store.itemsFound}/${store.itemsTotal} продукта',
-                        style: TextStyle(fontSize: 11, color: AppTheme.mutedText),
+                        style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
                       ),
                       if (store.address.isNotEmpty)
                         Text(
                           store.address,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 11, color: AppTheme.mutedText),
+                          style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
                         ),
                     ],
                   ),
                 ),
                 IconButton(
                   tooltip: 'Навигация',
-                  icon: const Icon(Icons.directions, color: AppTheme.primaryGreen),
+                  icon: Icon(Icons.directions, color: Theme.of(context).colorScheme.primary),
                   onPressed: () => openInMaps(store.lat, store.lng),
                 ),
                 Column(
@@ -594,16 +597,16 @@ class _StoreCard extends StatelessWidget {
                   children: [
                     Text(
                       '${store.total.toStringAsFixed(2)} €',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppTheme.accentGreen),
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Theme.of(context).colorScheme.secondary),
                     ),
                     if (store.complete)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: AppTheme.accentGreen.withOpacity(0.15),
+                          color: Theme.of(context).colorScheme.secondary.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: const Text('Комплетно', style: TextStyle(fontSize: 10, color: AppTheme.accentGreen)),
+                        child: Text('Комплетно', style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.secondary)),
                       ),
                   ],
                 ),
@@ -621,7 +624,7 @@ class _StoreCard extends StatelessWidget {
                       children: [
                         Text(item.name ?? item.query, style: const TextStyle(fontSize: 12)),
                         if (item.name != null)
-                          Text(item.query, style: TextStyle(fontSize: 10, color: AppTheme.mutedText)),
+                          Text(item.query, style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                       ],
                     ),
                   ),
@@ -634,6 +637,7 @@ class _StoreCard extends StatelessWidget {
               ),
             )),
           ],
+        ),
         ),
       ),
     );

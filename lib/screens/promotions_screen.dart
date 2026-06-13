@@ -4,7 +4,7 @@ library;
 import 'package:flutter/material.dart';
 import '../models/promotion_result.dart';
 import '../services/api_service.dart';
-import '../widgets/app_theme.dart';
+import "../utils/date_utils.dart" as date_utils;
 
 class PromotionsScreen extends StatefulWidget {
   final double lat;
@@ -86,8 +86,8 @@ class _PromotionsScreenState extends State<PromotionsScreen> {
   Widget _buildContent() {
     final result = _result!;
     if (result.chains.isEmpty) {
-      return const Center(
-        child: Text('Няма промоции в тази зона', style: TextStyle(color: AppTheme.mutedText)),
+      return Center(
+        child: Text('Няма промоции в тази зона', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
       );
     }
 
@@ -127,12 +127,12 @@ class ChainPromoCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: AppTheme.primaryGreen.withOpacity(0.15),
+                    color: Theme.of(context).colorScheme.primary.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
                     '${chain.nStores} магазина',
-                    style: const TextStyle(fontSize: 11, color: AppTheme.accentGreen),
+                    style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.secondary),
                   ),
                 ),
               ],
@@ -141,8 +141,8 @@ class ChainPromoCard extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Text(
-                  'Обновено: ${chain.latestSnapshot}',
-                  style: TextStyle(fontSize: 10, color: AppTheme.mutedText),
+                  'Обновено: ${date_utils.DateUtils.formatToDayMonth(chain.latestSnapshot)}',
+                  style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ),
             const SizedBox(height: 4),
@@ -161,7 +161,7 @@ class ChainPromoCard extends StatelessWidget {
                         '${item.priceRetail.toStringAsFixed(2)} €',
                         style: TextStyle(
                           fontSize: 11,
-                          color: AppTheme.mutedText,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           decoration: TextDecoration.lineThrough,
                         ),
                       ),

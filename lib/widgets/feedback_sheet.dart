@@ -12,7 +12,6 @@ import 'package:flutter/material.dart';
 import 'package:in_app_review/in_app_review.dart';
 import '../services/api_service.dart';
 import '../services/analytics.dart';
-import 'app_theme.dart';
 
 Future<void> showRatingSheet(BuildContext context) {
   return showModalBottomSheet<void>(
@@ -88,7 +87,7 @@ class _RatingSheetState extends State<_RatingSheet> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textColor = isDark ? AppTheme.primaryTextDark : Colors.black87;
+    final textColor = isDark ? Theme.of(context).colorScheme.onSurface : Colors.black87;
 
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -106,7 +105,7 @@ class _RatingSheetState extends State<_RatingSheet> {
       children: [
         const SizedBox(height: 8),
         Icon(happy ? Icons.celebration : Icons.favorite,
-            size: 44, color: happy ? AppTheme.primaryGreen : Colors.redAccent),
+            size: 44, color: happy ? Theme.of(context).colorScheme.primary : Colors.redAccent),
         const SizedBox(height: 12),
         Text(
           happy
@@ -143,7 +142,7 @@ class _RatingSheetState extends State<_RatingSheet> {
         Center(
           child: Text(
             'Дай ни оценка с до 5 звезди',
-            style: TextStyle(fontSize: 12, color: AppTheme.mutedText),
+            style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
         ),
         const SizedBox(height: 14),
@@ -159,7 +158,7 @@ class _RatingSheetState extends State<_RatingSheet> {
               constraints: const BoxConstraints(),
               icon: Icon(
                 filled ? Icons.star_rounded : Icons.star_outline_rounded,
-                color: filled ? AppTheme.warnAmber : AppTheme.mutedText,
+                color: filled ? Colors.amber : Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             );
           }),
@@ -184,7 +183,7 @@ class _RatingSheetState extends State<_RatingSheet> {
           if (_rating >= 4)
             Text(
               'След изпращане ще те поканим да ни оцениш и в Google Play.',
-              style: TextStyle(fontSize: 11, color: AppTheme.mutedText),
+              style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           const SizedBox(height: 12),
         ],

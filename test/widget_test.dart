@@ -17,7 +17,9 @@ void main() {
     });
 
     testWidgets('App launches without crashing', (tester) async {
-      await tester.pumpWidget(const KolichkaApp());
+      final provider = ThemeProvider();
+      await provider.load();
+      await tester.pumpWidget(KolichkaApp(provider: provider));
       await tester.pump();
 
       // App should render — Scaffold is the root container

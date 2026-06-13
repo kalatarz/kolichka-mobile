@@ -21,7 +21,7 @@ import '../services/api_service.dart';
 import '../services/location_service.dart';
 import '../services/local_store.dart';
 import '../services/analytics.dart';
-import '../widgets/app_theme.dart';
+import '../main.dart';
 import '../widgets/brand_header.dart';
 import '../widgets/location_chip.dart';
 import '../widgets/search_bar.dart';
@@ -113,7 +113,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _categories = results[0] as List<Category>;
         final stores = results[1] as List<Store>;
         _storesCount = stores.length;
-        _locationLabel = savedAddress ?? 'Моето местоположение';
+        _locationLabel = savedAddress ?? 'Моята локация';
         _isLoading = false;
         _locationError = false;
       });
@@ -139,7 +139,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       setState(() {
         _lat = pos.latitude;
         _lng = pos.longitude;
-        _locationLabel = 'Моето местоположение';
+        _locationLabel = 'Моята локация';
       });
       await _location.savePosition(pos, address: 'Моето местоположение');
       try {
@@ -372,13 +372,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       return Scaffold(
         body: Container(
           color: Theme.of(context).scaffoldBackgroundColor,
-          child: const Center(
+          child: Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                CircularProgressIndicator(color: AppTheme.primaryGreen),
+                CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
                 SizedBox(height: 16),
-                Text('Зареждане...', style: TextStyle(color: AppTheme.mutedText)),
+                Text('Зареждане...', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
               ],
             ),
           ),
@@ -394,7 +394,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.location_off, size: 64, color: AppTheme.warnAmber),
+                Icon(Icons.location_off, size: 64, color: Theme.of(context).colorScheme.error),
                 const SizedBox(height: 16),
                 const Text(
                   'Възникна проблем при зареждането',
@@ -405,7 +405,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 Text(
                   'Провери връзката си и опитай отново.',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppTheme.mutedText),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 24),
                 ElevatedButton.icon(
@@ -413,7 +413,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   icon: const Icon(Icons.refresh),
                   label: const Text('Опитай отново'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryGreen,
+                    backgroundColor: Theme.of(context).colorScheme.primary,
                     foregroundColor: Colors.white,
                   ),
                 ),
@@ -430,7 +430,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           children: [
             // 1. Brand header
             BrandHeader(
-              onThemeToggle: () {}, // handled globally
+              onThemeToggle: () {
+                final tp = ThemeProvider.instance;
+                if (tp != null) {
+                  tp.toggle();
+                }
+              },
               onFavorites: _openFavorites,
               onSettings: _openSettings,
             ),
@@ -471,10 +476,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
                       // 5. Results area
                       if (_searching)
-                        const Padding(
+                        Padding(
                           padding: EdgeInsets.all(24),
                           child: Center(
-                            child: CircularProgressIndicator(color: AppTheme.primaryGreen),
+                            child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
                           ),
                         )
                       else if (_searchError != null)
@@ -493,7 +498,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       // 6. Basket FAB
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _openBasket,
-        backgroundColor: AppTheme.primaryGreen,
+        backgroundColor: Theme.of(context).colorScheme.primary,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.shopping_basket, size: 20),
         label: Row(
@@ -555,13 +560,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
                     color: isExpanded
-                        ? AppTheme.primaryGreen.withOpacity(0.15)
-                        : (isDark ? AppTheme.darkCard : Colors.grey.shade100),
+                        ? Theme.of(context).colorScheme.primary.withOpacity(0.15)
+                        : (isDark ? Theme.of(context).colorScheme.surface : Colors.grey.shade100),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
                       color: isExpanded
-                          ? AppTheme.primaryGreen
-                          : (isDark ? AppTheme.darkLine : AppTheme.lightLine),
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.outlineVariant,
                     ),
                   ),
                   child: Row(
@@ -569,7 +574,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     children: [
                       Icon(_groupIcon(group.label),
                           size: 16,
-                          color: isExpanded ? AppTheme.primaryGreen : AppTheme.mutedText),
+                          color: isExpanded ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant),
                       const SizedBox(width: 6),
                       Text(
                         group.label,
@@ -577,15 +582,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           fontSize: 13,
                           fontWeight: isExpanded ? FontWeight.w700 : FontWeight.w500,
                           color: isExpanded
-                              ? AppTheme.primaryGreen
-                              : (isDark ? AppTheme.primaryTextDark : Colors.black87),
-                        ),
-                      ),
-                      const SizedBox(width: 2),
-                      Icon(
-                        isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-                        size: 16,
-                        color: isExpanded ? AppTheme.primaryGreen : AppTheme.mutedText,
+                              ? Theme.of(context).colorScheme.primary
+                              : (isDark ? Theme.of(context).colorScheme.onSurface : Colors.black87),
+                         ),
+                       ),
+                       const SizedBox(width: 4),
+                       Icon(
+                         isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                         size: 16,
+                         color: isExpanded ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ],
                   ),
@@ -622,18 +627,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
               decoration: BoxDecoration(
                 color: isSelected
-                    ? AppTheme.primaryGreen
-                    : (isDark ? AppTheme.darkLine : Colors.grey.shade200),
+                    ? Theme.of(context).colorScheme.primary
+                    : (isDark ? Theme.of(context).colorScheme.outlineVariant : Colors.grey.shade200),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Text(
                 cat.label,
                 style: TextStyle(
                   fontSize: 12,
+                  fontWeight: FontWeight.w600,
                   color: isSelected
                       ? Colors.white
-                      : (isDark ? AppTheme.primaryTextDark : Colors.black87),
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                      : (isDark ? Theme.of(context).colorScheme.onSurface : Colors.black87),
                 ),
               ),
             ),
@@ -679,12 +684,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline, size: 48, color: AppTheme.pink),
+            Icon(Icons.error_outline, size: 48, color: Theme.of(context).colorScheme.error),
             const SizedBox(height: 12),
             Text(
               _searchError ?? 'Грешка при търсенето',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppTheme.mutedText),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
@@ -694,7 +699,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               icon: const Icon(Icons.refresh, size: 18),
               label: const Text('Опитай отново'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryGreen,
+                backgroundColor: Theme.of(context).colorScheme.primary,
                 foregroundColor: Colors.white,
               ),
             ),
@@ -735,10 +740,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               decoration: BoxDecoration(
                 color: sel
                     ? chainColor(slug).withOpacity(0.18)
-                    : (isDark ? AppTheme.darkLine : Colors.grey.shade100),
-                borderRadius: BorderRadius.circular(16),
+                    : (isDark ? Theme.of(context).colorScheme.outlineVariant : Colors.grey.shade100),
+                borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                    color: sel ? chainColor(slug) : (isDark ? AppTheme.darkLine : AppTheme.lightLine)),
+                  width: 1.5,
+                  color: sel ? chainColor(slug) : Theme.of(context).colorScheme.outlineVariant),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -753,7 +759,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: sel ? FontWeight.w600 : FontWeight.normal,
-                        color: isDark ? AppTheme.primaryTextDark : Colors.black87,
+                        color: isDark ? Theme.of(context).colorScheme.onSurface : Colors.black87,
                       )),
                 ],
               ),
@@ -787,7 +793,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.search_off, size: 64, color: AppTheme.mutedText),
+              Icon(Icons.search_off, size: 64, color: Theme.of(context).colorScheme.onSurfaceVariant),
               const SizedBox(height: 12),
               Text(
                 'Няма намерени резултати за "${_lastQuery}"',
@@ -795,10 +801,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 style: const TextStyle(fontSize: 15),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Опитайте с по-голям радиус или друг продукт.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: AppTheme.mutedText),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ],
           ),
@@ -833,11 +839,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         if (chainsPresent.length > 1) _buildChainFilter(chainsPresent),
 
         if (filtered.isEmpty && _chainFilter.isNotEmpty)
-          const Padding(
+          Padding(
             padding: EdgeInsets.all(20),
             child: Center(
               child: Text('Няма продукти за избраните вериги.',
-                  style: TextStyle(color: AppTheme.mutedText)),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
             ),
           ),
 
@@ -855,7 +861,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             child: Text(
               'Приблизителни съвпадения (${loose.length})',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.mutedText),
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ),
           ...loose.map((looseMatch) => _LooseCard(loose: looseMatch)),
@@ -871,9 +877,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? AppTheme.darkCard : Colors.white,
+        color: isDark ? Theme.of(context).colorScheme.surface : Colors.white,
         border: Border(
-          top: BorderSide(color: isDark ? AppTheme.darkLine : AppTheme.lightLine),
+          top: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
         ),
       ),
       child: BottomNavigationBar(
@@ -898,9 +904,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               break;
           }
         },
-        backgroundColor: isDark ? AppTheme.darkCard : Colors.white,
-        selectedItemColor: AppTheme.primaryGreen,
-        unselectedItemColor: AppTheme.mutedText,
+        backgroundColor: isDark ? Theme.of(context).colorScheme.surface : Colors.white,
+        selectedItemColor: Theme.of(context).colorScheme.primary,
+        unselectedItemColor: Theme.of(context).colorScheme.onSurfaceVariant,
         type: BottomNavigationBarType.fixed,
         elevation: 0,
       ),
@@ -993,11 +999,11 @@ class _LocationFilterSheetState extends State<_LocationFilterSheet> {
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  const Icon(Icons.place, size: 18, color: AppTheme.primaryGreen),
+                  Icon(Icons.place, size: 18, color: Theme.of(context).colorScheme.primary),
                   const SizedBox(width: 6),
                   Text(
                     'Локация и филтри',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: isDark ? AppTheme.primaryTextDark : Colors.black87),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: isDark ? Theme.of(context).colorScheme.onSurface : Colors.black87),
                   ),
                   const Spacer(),
                   TextButton(
@@ -1016,7 +1022,7 @@ class _LocationFilterSheetState extends State<_LocationFilterSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Локация', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: isDark ? AppTheme.mutedText : AppTheme.mutedText)),
+                  Text('Локация', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: isDark ? Theme.of(context).colorScheme.onSurfaceVariant : Theme.of(context).colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -1049,7 +1055,7 @@ class _LocationFilterSheetState extends State<_LocationFilterSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Радиус на търсене', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: isDark ? AppTheme.mutedText : AppTheme.mutedText)),
+                  Text('Радиус на търсене', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: isDark ? Theme.of(context).colorScheme.onSurfaceVariant : Theme.of(context).colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 8),
                   RadiusSegment(
                     selectedKm: _radiusKm,
@@ -1072,7 +1078,7 @@ class _LocationFilterSheetState extends State<_LocationFilterSheet> {
                 children: [
                   Text(
                     'Магазини наблизо (${_stores.length})',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: isDark ? AppTheme.mutedText : AppTheme.mutedText),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: isDark ? Theme.of(context).colorScheme.onSurfaceVariant : Theme.of(context).colorScheme.onSurfaceVariant),
                   ),
                   const Spacer(),
                   TextButton.icon(
@@ -1100,9 +1106,9 @@ class _LocationFilterSheetState extends State<_LocationFilterSheet> {
 
             Flexible(
               child: _stores.isEmpty
-                  ? const Padding(
+                  ? Padding(
                       padding: EdgeInsets.all(16),
-                      child: Text('Няма магазини в тази зона', style: TextStyle(color: AppTheme.mutedText)),
+                      child: Text('Няма магазини в тази зона', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                     )
                   : ListView.builder(
                       shrinkWrap: true,
@@ -1113,7 +1119,7 @@ class _LocationFilterSheetState extends State<_LocationFilterSheet> {
                           dense: true,
                           leading: Text(store.chainSlug[0].toUpperCase(), style: const TextStyle(fontWeight: FontWeight.bold)),
                           title: Text(store.chainName, style: const TextStyle(fontSize: 13)),
-                          subtitle: Text('${store.address} · ${store.distanceText ?? ''}', style: const TextStyle(fontSize: 11, color: AppTheme.mutedText)),
+                          subtitle: Text('${store.address} · ${store.distanceText ?? ''}', style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                         );
                       },
                     ),
@@ -1158,9 +1164,9 @@ class _LooseCard extends StatelessWidget {
    return Container(
      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
      decoration: BoxDecoration(
-       color: isDark ? AppTheme.darkCard : Colors.white,
+       color: isDark ? Theme.of(context).colorScheme.surface : Colors.white,
        borderRadius: BorderRadius.circular(10),
-       border: Border.all(color: isDark ? AppTheme.darkLine : AppTheme.lightLine),
+       border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
      ),
      child: Padding(
        padding: const EdgeInsets.all(12),
@@ -1172,12 +1178,12 @@ class _LooseCard extends StatelessWidget {
                children: [
                  Text(
                    loose.rawName,
-                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: isDark ? AppTheme.primaryTextDark : Colors.black87),
+                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: isDark ? Theme.of(context).colorScheme.onSurface : Colors.black87),
                  ),
                  const SizedBox(height: 2),
                  Text(
                    '${loose.chainName}${loose.address != null ? ' · ${loose.address}' : ''}',
-                   style: TextStyle(fontSize: 11, color: AppTheme.mutedText),
+                   style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
                  ),
                ],
              ),
@@ -1190,13 +1196,13 @@ class _LooseCard extends StatelessWidget {
                  style: TextStyle(
                    fontSize: 16,
                    fontWeight: FontWeight.bold,
-                   color: isPromo ? Colors.redAccent : (isDark ? AppTheme.primaryTextDark : Colors.black87),
+                   color: isPromo ? Colors.redAccent : (isDark ? Theme.of(context).colorScheme.onSurface : Colors.black87),
                  ),
                ),
                if (isPromo && loose.priceRetail != null) ...[
                  Text(
                    '${loose.priceRetail!.toStringAsFixed(2)} €',
-                   style: TextStyle(fontSize: 10, decoration: TextDecoration.lineThrough, color: AppTheme.mutedText),
+                   style: TextStyle(fontSize: 10, decoration: TextDecoration.lineThrough, color: Theme.of(context).colorScheme.onSurfaceVariant),
                  ),
                ],
              ],
@@ -1229,9 +1235,9 @@ class _ProductCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
-        color: isDark ? AppTheme.darkCard : Colors.white,
+        color: isDark ? Theme.of(context).colorScheme.surface : Colors.white,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: isDark ? AppTheme.darkLine : AppTheme.lightLine),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -1244,19 +1250,19 @@ class _ProductCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     match.display,
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: isDark ? AppTheme.primaryTextDark : Colors.black87),
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: isDark ? Theme.of(context).colorScheme.onSurface : Colors.black87),
                   ),
                 ),
                 if (match.qty != null)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: isDark ? AppTheme.darkLine : Colors.grey.shade200,
+                      color: isDark ? Theme.of(context).colorScheme.outlineVariant : Colors.grey.shade200,
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
                       match.qty.toString(),
-                      style: TextStyle(fontSize: 11, color: isDark ? AppTheme.mutedText : AppTheme.mutedText),
+                      style: TextStyle(fontSize: 11, color: isDark ? Theme.of(context).colorScheme.onSurfaceVariant : Theme.of(context).colorScheme.onSurfaceVariant),
                     ),
                   ),
                 IconButton(
@@ -1268,7 +1274,7 @@ class _ProductCard extends StatelessWidget {
                   icon: Icon(
                     isFav ? Icons.favorite : Icons.favorite_border,
                     size: 18,
-                    color: isFav ? Colors.redAccent : AppTheme.mutedText,
+                    color: isFav ? Colors.redAccent : Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -1280,7 +1286,7 @@ class _ProductCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: AppTheme.primaryGreen.withOpacity(0.12),
+                color: Theme.of(context).colorScheme.primary.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -1291,7 +1297,7 @@ class _ProductCard extends StatelessWidget {
                       children: [
                         Text(
                           match.cheapest.chainName,
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.accentGreen),
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.secondary),
                         ),
                         if (match.cheapest.isPromo)
                           Row(
@@ -1314,7 +1320,7 @@ class _ProductCard extends StatelessWidget {
                                   style: TextStyle(
                                     fontSize: 10,
                                     decoration: TextDecoration.lineThrough,
-                                    color: AppTheme.mutedText,
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                                   ),
                                 ),
                               ],
@@ -1328,12 +1334,12 @@ class _ProductCard extends StatelessWidget {
                     children: [
                       Text(
                         '${match.cheapest.minPrice.toStringAsFixed(2)} €',
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.accentGreen),
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.secondary),
                       ),
                       if (match.cheapest.nStores != null && match.cheapest.nStores! > 1)
                         Text(
                           '${match.cheapest.nStores!} магазина',
-                          style: TextStyle(fontSize: 10, color: AppTheme.mutedText),
+                          style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
                         ),
                     ],
                   ),
@@ -1351,7 +1357,7 @@ class _ProductCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       chain.chainName,
-                      style: TextStyle(fontSize: 12, color: isDark ? AppTheme.primaryTextDark : Colors.black87),
+                      style: TextStyle(fontSize: 12, color: isDark ? Theme.of(context).colorScheme.onSurface : Colors.black87),
                     ),
                   ),
                   if (chain.isPromo) ...[
@@ -1373,7 +1379,7 @@ class _ProductCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: isDark ? AppTheme.primaryTextDark : Colors.black87,
+                      color: isDark ? Theme.of(context).colorScheme.onSurface : Colors.black87,
                     ),
                   ),
                 ],
@@ -1386,11 +1392,11 @@ class _ProductCard extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 6),
                 child: Row(
                   children: [
-                    Icon(Icons.info_outline, size: 12, color: AppTheme.mutedText),
+                    Icon(Icons.info_outline, size: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
                     const SizedBox(width: 4),
                     Text(
                       'Разлика ${match.spread!.pct}% (${match.spread!.min.toStringAsFixed(2)} — ${match.spread!.max.toStringAsFixed(2)} €)',
-                      style: TextStyle(fontSize: 10, color: AppTheme.mutedText),
+                      style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
                     ),
                   ],
                 ),
@@ -1473,7 +1479,7 @@ class _FavoritesSheetState extends State<_FavoritesSheet> {
                 const Icon(Icons.favorite, size: 18, color: Colors.redAccent),
                 const SizedBox(width: 6),
                 Text('Любими',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: isDark ? AppTheme.primaryTextDark : Colors.black87)),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: isDark ? Theme.of(context).colorScheme.onSurface : Colors.black87)),
                 const Spacer(),
                 TextButton(onPressed: () => Navigator.pop(context), child: const Text('Затвори')),
               ],
@@ -1483,10 +1489,10 @@ class _FavoritesSheetState extends State<_FavoritesSheet> {
           if (_loading)
             const Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator())
           else if (_favs.isEmpty)
-            const Padding(
+            Padding(
               padding: EdgeInsets.all(24),
               child: Text('Нямаш любими още. Натисни ♥ върху продукт, за да го запазиш.',
-                  textAlign: TextAlign.center, style: TextStyle(color: AppTheme.mutedText)),
+                  textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
             )
           else
             Flexible(

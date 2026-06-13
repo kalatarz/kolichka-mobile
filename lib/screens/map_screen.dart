@@ -9,7 +9,6 @@ import '../models/store.dart';
 import '../services/api_service.dart';
 import '../services/analytics.dart';
 import '../services/external.dart';
-import '../widgets/app_theme.dart';
 import '../widgets/chain_colors.dart';
 
 class MapScreen extends StatefulWidget {
@@ -122,7 +121,7 @@ class _MapScreenState extends State<MapScreen> {
                                   color: chainColor(s.chainSlug),
                                   shape: BoxShape.circle,
                                   border: Border.all(
-                                      color: sel ? AppTheme.warnAmber : Colors.white,
+                                      color: sel ? Colors.amber : Colors.white,
                                       width: sel ? 3 : 2),
                                   boxShadow: const [
                                     BoxShadow(color: Colors.black26, blurRadius: 2),
@@ -162,7 +161,7 @@ class _MapScreenState extends State<MapScreen> {
                           children: [
                             IconButton(
                               tooltip: 'Навигация',
-                              icon: const Icon(Icons.directions, color: AppTheme.primaryGreen),
+                              icon: Icon(Icons.directions, color: Theme.of(context).colorScheme.primary),
                               onPressed: () => openInMaps(_selected!.lat, _selected!.lng),
                             ),
                             IconButton(
@@ -186,7 +185,7 @@ class _MapScreenState extends State<MapScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       height: 44,
-      color: isDark ? AppTheme.darkCard : Colors.white,
+      color: isDark ? Theme.of(context).colorScheme.surface : Colors.white,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
@@ -211,7 +210,7 @@ class _MapScreenState extends State<MapScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                 color: hidden
-                    ? (isDark ? AppTheme.darkLine : Colors.grey.shade200)
+                    ? Theme.of(context).colorScheme.outlineVariant
                     : chainColor(l.slug).withOpacity(0.15),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: chainColor(l.slug), width: hidden ? 0 : 1),
@@ -223,7 +222,7 @@ class _MapScreenState extends State<MapScreen> {
                     width: 10,
                     height: 10,
                     decoration: BoxDecoration(
-                      color: hidden ? AppTheme.mutedText : chainColor(l.slug),
+                      color: hidden ? Theme.of(context).colorScheme.onSurfaceVariant : chainColor(l.slug),
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -232,7 +231,7 @@ class _MapScreenState extends State<MapScreen> {
                       style: TextStyle(
                         fontSize: 12,
                         decoration: hidden ? TextDecoration.lineThrough : null,
-                        color: hidden ? AppTheme.mutedText : (isDark ? AppTheme.primaryTextDark : Colors.black87),
+                        color: hidden ? Theme.of(context).colorScheme.onSurfaceVariant : (isDark ? Theme.of(context).colorScheme.onSurface : Colors.black87),
                       )),
                 ],
               ),

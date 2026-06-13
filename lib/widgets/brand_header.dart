@@ -3,7 +3,6 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'app_theme.dart';
 
 class BrandHeader extends StatelessWidget {
   final VoidCallback? onThemeToggle;
@@ -23,9 +22,9 @@ class BrandHeader extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: isDark ? AppTheme.darkCard : Colors.white,
+        color: isDark ? Theme.of(context).colorScheme.surface : Colors.white,
         border: Border(
-          bottom: BorderSide(color: isDark ? AppTheme.darkLine : AppTheme.lightLine, width: 1),
+          bottom: BorderSide(color: Theme.of(context).colorScheme.outlineVariant, width: 1),
         ),
       ),
       child: Row(
@@ -39,14 +38,14 @@ class BrandHeader extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.shopping_cart, size: 22, color: AppTheme.primaryGreen),
+                  Icon(Icons.shopping_cart, size: 22, color: Theme.of(context).colorScheme.primary),
                   const SizedBox(width: 6),
                   Text(
                     'Количка',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
-                      color: isDark ? AppTheme.primaryTextDark : Colors.black87,
+                      color: isDark ? Theme.of(context).colorScheme.onSurface : Colors.black87,
                     ),
                   ),
                 ],
@@ -59,7 +58,7 @@ class BrandHeader extends StatelessWidget {
           // Action buttons row
           if (onFavorites != null)
             IconButton(
-              icon: Icon(Icons.favorite, size: 20, color: isDark ? AppTheme.mutedText : Colors.redAccent),
+              icon: Icon(Icons.favorite, size: 20, color: isDark ? Theme.of(context).colorScheme.onSurfaceVariant : Colors.redAccent),
               onPressed: onFavorites,
               tooltip: 'Любими',
               padding: EdgeInsets.zero,
@@ -71,7 +70,7 @@ class BrandHeader extends StatelessWidget {
               icon: Icon(
                 isDark ? Icons.light_mode : Icons.dark_mode,
                 size: 20,
-                color: isDark ? AppTheme.mutedText : AppTheme.mutedText,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
               onPressed: onThemeToggle,
               tooltip: 'Тема',
@@ -82,7 +81,7 @@ class BrandHeader extends StatelessWidget {
           IconButton(
             icon: Icon(
               Icons.settings_outlined,
-              color: isDark ? AppTheme.mutedText : AppTheme.mutedText,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               size: 22,
             ),
             onPressed: onSettings,

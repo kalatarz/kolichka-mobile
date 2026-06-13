@@ -3,8 +3,8 @@ library;
 
 import 'package:flutter/material.dart';
 import '../models/compare_result.dart';
-import '../services/api_service.dart';
-import '../widgets/app_theme.dart';
+import "../services/api_service.dart";
+import "../services/local_store.dart";
 
 class SearchResultsScreen extends StatefulWidget {
   final String query;
@@ -97,13 +97,13 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.search_off, size: 64, color: AppTheme.mutedText),
+              Icon(Icons.search_off, size: 64, color: Theme.of(context).colorScheme.onSurfaceVariant),
               const SizedBox(height: 12),
               const Text('Няма намерени резултати', style: TextStyle(fontSize: 16)),
               const SizedBox(height: 8),
               Text(
                 'Опитайте с по-голям радиус или друг продукт.',
-                style: TextStyle(color: AppTheme.mutedText),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -122,7 +122,7 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
               '${result.count} продукта от ${result.matches.fold<int>(0, (m, e) => m + e.nChains)} вериги',
-              style: TextStyle(fontSize: 13, color: AppTheme.mutedText),
+              style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ),
 
@@ -136,7 +136,7 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
               padding: const EdgeInsets.only(bottom: 8),
               child: Text(
                 'Други резултати',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.mutedText),
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ),
             ...result.loose.map((loose) => LooseCard(loose: loose)),
@@ -179,14 +179,20 @@ class MatchCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
-                      color: AppTheme.primaryGreen.withOpacity(0.15),
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
                       match.qty!.toString(),
-                      style: TextStyle(fontSize: 11, color: AppTheme.accentGreen),
+                      style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.secondary),
                     ),
                   ),
+                IconButton(
+                  icon: const Icon(Icons.add_shopping_cart, color: Colors.green, size: 20),
+                  onPressed: () async {
+                    await LocalStore.addToBasket(match.display);
+                  },
+                ),
               ],
             ),
 
@@ -198,9 +204,9 @@ class MatchCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: AppTheme.accentGreen.withOpacity(0.15),
+                    color: Theme.of(context).colorScheme.primary.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppTheme.accentGreen.withOpacity(0.4)),
+                    border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.4)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -210,13 +216,13 @@ class MatchCard extends StatelessWidget {
                         style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
                       ),
                       Text(
-                        '${match.cheapest.minPrice.toStringAsFixed(2)} €',
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.accentGreen),
+                        match.cheapest.minPrice <= 0 ? '—' : '${match.cheapest.minPrice.toStringAsFixed(2)} €',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.secondary),
                       ),
                       if (match.cheapest.isPromo)
                         Text(
                           'на цена от ${match.cheapest.priceRetail!.toStringAsFixed(2)} € (-${match.cheapest.pctOff}%)',
-                          style: const TextStyle(fontSize: 10, color: AppTheme.warnAmber),
+                          style: const TextStyle(fontSize: 10, color: Colors.amber),
                         ),
                     ],
                   ),
@@ -235,11 +241,11 @@ class MatchCard extends StatelessWidget {
                         ),
                         Text(
                           '${match.spread!.min.toStringAsFixed(2)} — ${match.spread!.max.toStringAsFixed(2)} €',
-                          style: TextStyle(fontSize: 11, color: AppTheme.mutedText),
+                          style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
                         ),
                         Text(
                           '${match.nChains} вериги',
-                          style: TextStyle(fontSize: 11, color: AppTheme.mutedText),
+                          style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
                         ),
                       ],
                     ),
@@ -257,10 +263,10 @@ class MatchCard extends StatelessWidget {
                 return Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: isBest ? AppTheme.accentGreen.withOpacity(0.1) : Theme.of(context).cardColor,
+                    color: isBest ? Theme.of(context).colorScheme.secondary.withOpacity(0.1) : Theme.of(context).cardColor,
                     borderRadius: BorderRadius.circular(6),
                     border: Border.all(
-                      color: isBest ? AppTheme.accentGreen : AppTheme.darkLine,
+                      color: isBest ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.outlineVariant,
                     ),
                   ),
                   child: Row(
@@ -268,7 +274,7 @@ class MatchCard extends StatelessWidget {
                     children: [
                       Text(
                         chain.chainName,
-                        style: TextStyle(fontSize: 11, color: isBest ? AppTheme.accentGreen : null),
+                        style: TextStyle(fontSize: 11, color: isBest ? Theme.of(context).colorScheme.secondary : null),
                       ),
                       const SizedBox(width: 6),
                       Text(
@@ -276,7 +282,7 @@ class MatchCard extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
-                          color: isBest ? AppTheme.accentGreen : null,
+                          color: isBest ? Theme.of(context).colorScheme.secondary : null,
                         ),
                       ),
                     ],
@@ -305,7 +311,7 @@ class MatchCard extends StatelessWidget {
             if (match.qty != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Text(match.qty!.toString(), style: const TextStyle(color: AppTheme.mutedText)),
+                child: Text(match.qty!.toString(), style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
               ),
             const Divider(),
             ...chains.map((c) => ListTile(
@@ -322,7 +328,7 @@ class MatchCard extends StatelessWidget {
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                       if (c.isPromo)
                         Text('от ${c.priceRetail!.toStringAsFixed(2)} (-${c.pctOff}%)',
-                            style: const TextStyle(fontSize: 11, color: AppTheme.warnAmber)),
+                            style: const TextStyle(fontSize: 11, color: Colors.amber)),
                     ],
                   ),
                 )),
@@ -346,19 +352,30 @@ class LooseCard extends StatelessWidget {
       child: ListTile(
         title: Text(loose.rawName, style: const TextStyle(fontSize: 13)),
         subtitle: Text(loose.chainName),
-        trailing: Column(
+        trailing: Row(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Text(
-              '${loose.price.toStringAsFixed(2)} €',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            IconButton(
+              icon: const Icon(Icons.add_shopping_cart, color: Colors.green, size: 20),
+              onPressed: () async {
+                await LocalStore.addToBasket(loose.rawName);
+              },
             ),
-            if (loose.distM != null)
-              Text(
-                loose.distM! < 1000 ? '${loose.distM} m' : '${(loose.distM! / 1000).toStringAsFixed(1)} km',
-                style: TextStyle(fontSize: 10, color: AppTheme.mutedText),
-              ),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  loose.price <= 0 ? '—' : '${loose.price.toStringAsFixed(2)} €',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                if (loose.distM != null)
+                  Text(
+                    loose.distM! < 1000 ? '${loose.distM} m' : '${(loose.distM! / 1000).toStringAsFixed(1)} km',
+                    style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  ),
+              ],
+            ),
           ],
         ),
       ),

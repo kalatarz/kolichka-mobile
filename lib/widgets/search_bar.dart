@@ -3,7 +3,6 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'app_theme.dart';
 
 class KolichkaSearchBar extends StatefulWidget {
   final TextEditingController controller;
@@ -44,86 +43,67 @@ class _KolichkaSearchBarState extends State<KolichkaSearchBar> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Row(
-        children: [
-          // Search input box
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: isDark ? AppTheme.darkCard : Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: isDark ? AppTheme.darkLine : AppTheme.lightLine,
-                  width: 1,
-                ),
-              ),
-              child: Row(
-                children: [
-                  // Magnifying glass icon
-                  Padding(
-                    padding: const EdgeInsets.only(left: 12),
-                    child: Icon(Icons.search, size: 18, color: isDark ? AppTheme.mutedText : AppTheme.mutedText),
-                  ),
-                  // Input field
-                  Expanded(
-                    child: TextField(
-                      controller: widget.controller,
-                      textInputAction: TextInputAction.search,
-                      onSubmitted: (_) => _submit(),
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: isDark ? AppTheme.primaryTextDark : Colors.black87,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: widget.hintText,
-                        hintStyle: TextStyle(color: isDark ? AppTheme.mutedText : AppTheme.mutedText),
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-                        isCollapsed: true,
-                      ),
-                    ),
-                  ),
-                  // Clear button
-                  if (_hasText)
-                    IconButton(
-                      icon: Icon(Icons.close, size: 16, color: isDark ? AppTheme.mutedText : AppTheme.mutedText),
-                      onPressed: () {
-                        widget.controller.clear();
-                        widget.onClear?.call();
-                      },
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  const SizedBox(width: 4),
-                ],
-              ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Container(
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: colorScheme.primary, width: 2),
+          boxShadow: [
+            BoxShadow(
+              color: colorScheme.primary.withOpacity(0.1),
+              blurRadius: 20,
+              offset: const Offset(0, 4),
             ),
-          ),
-          const SizedBox(width: 8),
-          // "Търси" button
-          Material(
-            color: AppTheme.primaryGreen,
-            borderRadius: BorderRadius.circular(10),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: _submit,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Text(
-                  'Търси',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                  ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: Icon(Icons.search, size: 22, color: colorScheme.primary),
+            ),
+            Expanded(
+              child: TextField(
+                controller: widget.controller,
+                textInputAction: TextInputAction.search,
+                onSubmitted: (_) => _submit(),
+                style: TextStyle(fontSize: 16, color: colorScheme.onSurface),
+                decoration: InputDecoration(
+                  hintText: widget.hintText,
+                  hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
                 ),
               ),
             ),
-          ),
-        ],
+            if (_hasText)
+              IconButton(
+                icon: Icon(Icons.close, size: 20, color: colorScheme.onSurfaceVariant),
+                onPressed: () {
+                  widget.controller.clear();
+                  widget.onClear?.call();
+                },
+              ),
+            Padding(
+              padding: const EdgeInsets.all(4),
+              child: ElevatedButton(
+                onPressed: _submit,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: colorScheme.primary,
+                  foregroundColor: colorScheme.onPrimary,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                ),
+                child: const Text('Търси', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ),
+            const SizedBox(width: 4),
+          ],
+        ),
       ),
     );
   }

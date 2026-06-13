@@ -3,7 +3,6 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'app_theme.dart';
 
 class RadiusSegment extends StatelessWidget {
   final double selectedKm;
@@ -28,7 +27,7 @@ class RadiusSegment extends StatelessWidget {
             'Радиус:',
             style: TextStyle(
               fontSize: 12,
-              color: isDark ? AppTheme.mutedText : AppTheme.mutedText,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -38,7 +37,7 @@ class RadiusSegment extends StatelessWidget {
             return Padding(
               padding: const EdgeInsets.only(right: 6),
               child: Material(
-                color: active ? AppTheme.primaryGreen : (isDark ? AppTheme.darkCard : Colors.white),
+                color: active ? Theme.of(context).colorScheme.primary : (isDark ? Theme.of(context).colorScheme.surface : Colors.white),
                 borderRadius: BorderRadius.circular(8),
                 clipBehavior: Clip.antiAlias,
                 child: InkWell(
@@ -50,7 +49,7 @@ class RadiusSegment extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                        color: active ? Colors.white : (isDark ? AppTheme.primaryTextDark : Colors.black87),
+                        color: active ? Colors.white : (isDark ? Theme.of(context).colorScheme.onSurface : Colors.black87),
                       ),
                     ),
                   ),

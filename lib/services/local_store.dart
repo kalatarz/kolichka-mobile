@@ -13,6 +13,7 @@ class LocalStore {
   static const _boughtKey = 'kolichka.basket.bought';
   static const _favKey = 'kolichka.favorites';
   static const _famKey = 'kolichka.fam.code';
+  static const _themeModeKey = 'kolichka.theme.mode';
 
   static Future<List<String>> _getList(String key) async {
     final p = await SharedPreferences.getInstance();
@@ -106,6 +107,24 @@ class LocalStore {
     list.add(t);
     await _setList(_boughtKey, list);
     return true;
+  }
+
+  // ---- Theme Mode ----
+
+  /// Returns the saved theme mode string: "light", "dark", or null (system).
+  static Future<String?> themeMode() async {
+    final p = await SharedPreferences.getInstance();
+    return p.getString(_themeModeKey);
+  }
+
+  /// Saves the theme mode preference.
+  static Future<void> setThemeMode(String? mode) async {
+    final p = await SharedPreferences.getInstance();
+    if (mode == null) {
+      await p.remove(_themeModeKey);
+    } else {
+      await p.setString(_themeModeKey, mode);
+    }
   }
 
   // ---- Favorites ----
