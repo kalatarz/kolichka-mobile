@@ -211,10 +211,31 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _performSearch('cat:$slug', displayQuery: label);
   }
 
-  /// Handle group expansion toggle.
+  /// Handle group expansion toggle — when opening, auto-select first category.
   void _toggleGroup(int index) {
+    final wasOpen = _openGroupIndex == index;
+
     setState(() {
-      _openGroupIndex = _openGroupIndex == index ? null : index;
+      if (wasOpen) {
+        // Collapsing: clear selection and results
+        _openGroupIndex = null;
+        _selectedCategory = null;
+        _currentResult = null;
+        _lastQuery = null;
+      } else {
+        // Opening: expand group AND auto-select first category → fire search
+        _openGroupIndex = index;
+        final slugs = kCatGroups[index].slugs
+            .where((s) => _categories.any((c) => c.slug == s))
+            .toList();
+        if (slugs.isNotEmpty) {
+          final firstSlug = slugs.first;
+          final firstCat = _categories.firstWhere((c) => c.slug == firstSlug);
+          _selectedCategory = firstSlug;
+          // Fire search immediately — don't wait for user to tap subcategory
+          _performSearch('cat:$firstSlug', displayQuery: firstCat.label);
+        }
+      }
     });
   }
 
@@ -546,51 +567,57 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // GROUP CHIPS — large, bold, with icon + arrow. Clearly the primary navigation level.
           Wrap(
             spacing: 8,
-            runSpacing: 8,
+            runSpacing: 10,
             children: groups.map((e) {
               final idx = e.key;
               final group = e.value;
               final isExpanded = _openGroupIndex == idx;
               return InkWell(
                 onTap: () => _toggleGroup(idx),
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(24),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   decoration: BoxDecoration(
                     color: isExpanded
                         ? Theme.of(context).colorScheme.primary.withOpacity(0.15)
-                        : (isDark ? Theme.of(context).colorScheme.surface : Colors.grey.shade100),
-                    borderRadius: BorderRadius.circular(20),
+                        : (isDark ? Color(0xFF2A2D34) : Color(0xFFF5F5F5)),
+                    borderRadius: BorderRadius.circular(24),
                     border: Border.all(
                       color: isExpanded
                           ? Theme.of(context).colorScheme.primary
-                          : Theme.of(context).colorScheme.outlineVariant,
+                          : (isDark ? Color(0xFF3A3D44) : Colors.grey.shade300),
+                      width: isExpanded ? 2.0 : 1.0,
                     ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(_groupIcon(group.label),
-                          size: 16,
-                          color: isExpanded ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant),
-                      const SizedBox(width: 6),
+                          size: 22,
+                          color: isExpanded
+                              ? Theme.of(context).colorScheme.primary
+                              : (isDark ? Color(0xFFBDBDBD) : Color(0xFF616161))),
+                      const SizedBox(width: 8),
                       Text(
                         group.label,
                         style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: isExpanded ? FontWeight.w700 : FontWeight.w500,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
                           color: isExpanded
                               ? Theme.of(context).colorScheme.primary
-                              : (isDark ? Theme.of(context).colorScheme.onSurface : Colors.black87),
-                         ),
-                       ),
-                       const SizedBox(width: 4),
-                       Icon(
-                         isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-                         size: 16,
-                         color: isExpanded ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant,
+                              : (isDark ? Color(0xFFE0E0E0) : Color(0xFF212121)),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Icon(
+                        isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                        size: 20,
+                        color: isExpanded
+                            ? Theme.of(context).colorScheme.primary
+                            : (isDark ? Color(0xFF9E9E9E) : Color(0xFF757575)),
                       ),
                     ],
                   ),
@@ -598,7 +625,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               );
             }).toList(),
           ),
-          if (_openGroupIndex != null) _buildSubcategories(_openGroupIndex!),
+          // SUBCATEGORIES — only shown when group is expanded. Smaller, secondary chips.
+          if (_openGroupIndex != null) ...[
+            const SizedBox(height: 14),
+            // Section label to make it clear these are subcategories of the group above
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 6),
+              child: Text(
+                'Категории',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: isDark ? Color(0xFF9E9E9E) : Colors.grey.shade600,
+                ),
+              ),
+            ),
+            _buildSubcategories(_openGroupIndex!),
+          ],
         ],
       ),
     );
@@ -612,39 +655,42 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         .where((s) => _categories.any((c) => c.slug == s))
         .toList();
     if (activeSlugs.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(top: 10, bottom: 2),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: activeSlugs.map((slug) {
-          final cat = _categories.firstWhere((c) => c.slug == slug);
-          final isSelected = _selectedCategory == slug;
-          return InkWell(
-            onTap: () => _handleCategoryTap(slug, cat.label),
-            borderRadius: BorderRadius.circular(16),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-              decoration: BoxDecoration(
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: activeSlugs.map((slug) {
+        final cat = _categories.firstWhere((c) => c.slug == slug);
+        final isSelected = _selectedCategory == slug;
+        return InkWell(
+          onTap: () => _handleCategoryTap(slug, cat.label),
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? Theme.of(context).colorScheme.primary
+                  : (isDark ? Color(0xFF3A3D44) : Colors.grey.shade200),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
                 color: isSelected
                     ? Theme.of(context).colorScheme.primary
-                    : (isDark ? Theme.of(context).colorScheme.outlineVariant : Colors.grey.shade200),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Text(
-                cat.label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: isSelected
-                      ? Colors.white
-                      : (isDark ? Theme.of(context).colorScheme.onSurface : Colors.black87),
-                ),
+                    : (isDark ? Color(0xFF4A4D54) : Colors.grey.shade300),
+                width: isSelected ? 1.5 : 1.0,
               ),
             ),
-          );
-        }).toList(),
-      ),
+            child: Text(
+              cat.label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: isSelected
+                    ? Colors.white
+                    : (isDark ? Color(0xFFBDBDBD) : Color(0xFF424242)),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 
