@@ -20,7 +20,6 @@ import 'services/analytics.dart';
 
 /// Persistent theme mode provider that loads from SharedPreferences and
 /// notifies listeners when the user toggles between light / dark / system.
-/// Exposed globally so HomeScreen can toggle without dependency injection.
 class ThemeProvider extends ChangeNotifier {
   static ThemeProvider? instance;
   ThemeMode _mode = ThemeMode.system;
@@ -75,10 +74,38 @@ void main() async {
   runApp(KolichkaApp(provider: provider));
 }
 
-class KolichkaApp extends StatelessWidget {
+class KolichkaApp extends StatefulWidget {
   final ThemeProvider provider;
 
   const KolichkaApp({super.key, required this.provider});
+
+  @override
+  State<KolichkaApp> createState() => _KolichkaAppState();
+}
+
+class _KolichkaAppState extends State<KolichkaApp> {
+  late ThemeMode _currentMode;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentMode = widget.provider.mode;
+    widget.provider.addListener(_onThemeChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.provider.removeListener(_onThemeChanged);
+    super.dispose();
+  }
+
+  void _onThemeChanged() {
+    if (mounted) {
+      setState(() {
+        _currentMode = widget.provider.mode;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -87,13 +114,7 @@ class KolichkaApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
-      themeMode: provider.mode,
-      builder: (context, child) {
-        return ListenableBuilder(
-          listenable: provider,
-          builder: (context, _) => child!,
-        );
-      },
+      themeMode: _currentMode,
       home: const HomeScreen(),
     );
   }
