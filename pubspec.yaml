@@ -2,7 +2,7 @@ name: kolichka
 description: "Количка — сравни цени на хранителни продукти около теб"
 # Prevent accidental publishing to pub.dev.
 publish_to: 'none'
-version: 1.2.0+6
+version: 1.4.0+8
 
 environment:
   sdk: ^3.7.0

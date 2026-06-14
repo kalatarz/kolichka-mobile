@@ -1,10 +1,8 @@
-/// Map of nearby stores (OpenStreetMap via flutter_map). Pins are colored dots
-/// per chain (like the web), with a tappable legend that filters by chain.
-library;
-
+import 'package:flutter/material.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:collection/collection.dart';
 import '../models/store.dart';
 import '../services/api_service.dart';
 import '../services/analytics.dart';
@@ -15,12 +13,21 @@ class MapScreen extends StatefulWidget {
   final double lat;
   final double lng;
   final double radiusKm;
+  final double? articleLat;
+  final double? articleLng;
+  final int? articleStoreId;
+  /// Optional product name — when set, highlights stores selling this product.
+  final String? productQuery;
 
   const MapScreen({
     super.key,
     required this.lat,
     required this.lng,
     required this.radiusKm,
+    this.articleLat,
+    this.articleLng,
+    this.articleStoreId,
+    this.productQuery,
   });
 
   @override
@@ -29,10 +36,11 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   final ApiService _api = ApiService();
+  final MapController _mapController = MapController();
   List<Store> _stores = [];
   bool _loading = true;
   Store? _selected;
-  final Set<String> _hidden = {}; // chain brand names hidden via the legend
+  final Set<String> _hidden = {};
 
   @override
   void initState() {
@@ -56,12 +64,15 @@ class _MapScreenState extends State<MapScreen> {
         _stores = stores;
         _loading = false;
       });
+      
+      if (widget.articleLat != null && widget.articleLng != null) {
+        _mapController.move(LatLng(widget.articleLat!, widget.articleLng!), 15);
+      }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  /// Distinct chains present (brand name → representative slug + count).
   Map<String, _Legend> get _legend {
     final m = <String, _Legend>{};
     for (final s in _stores) {
@@ -80,7 +91,7 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final center = LatLng(widget.lat, widget.lng);
+    final center = LatLng(widget.articleLat ?? widget.lat, widget.articleLng ?? widget.lng);
     final shown = _stores.where(_visible).toList();
     final legend = _legend.values.toList()
       ..sort((a, b) => b.count.compareTo(a.count));
@@ -94,7 +105,12 @@ class _MapScreenState extends State<MapScreen> {
             child: Stack(
               children: [
                 FlutterMap(
-                  options: MapOptions(initialCenter: center, initialZoom: 13),
+                  mapController: _mapController,
+                  options: MapOptions(
+                    initialCenter: center, 
+                    initialZoom: 13,
+                    interactionOptions: InteractionOptions(),
+                  ),
                   children: [
                     TileLayer(
                       urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -108,6 +124,18 @@ class _MapScreenState extends State<MapScreen> {
                           height: 24,
                           child: const Icon(Icons.my_location, color: Colors.blue, size: 22),
                         ),
+                        // Article marker
+                        if (widget.articleLat != null && widget.articleLng != null)
+                          Marker(
+                            point: LatLng(widget.articleLat!, widget.articleLng!),
+                            width: 30,
+                            height: 30,
+                            child: const Icon(Icons.location_on, color: Colors.red, size: 30),
+                          ),
+                        // Target store marker
+                        if (widget.articleStoreId != null)
+                          ..._getStoreMarkers(widget.articleStoreId!),
+                          
                         ...shown.map((s) {
                           final sel = _selected?.id == s.id;
                           return Marker(
@@ -136,6 +164,7 @@ class _MapScreenState extends State<MapScreen> {
                   ],
                 ),
                 if (_loading) const Center(child: CircularProgressIndicator()),
+                _buildZoomControls(),
                 if (_selected != null)
                   Positioned(
                     left: 12,
@@ -161,8 +190,8 @@ class _MapScreenState extends State<MapScreen> {
                           children: [
                             IconButton(
                               tooltip: 'Навигация',
-                              icon: Icon(Icons.directions, color: Theme.of(context).colorScheme.primary),
-                              onPressed: () => openInMaps(_selected!.lat, _selected!.lng),
+                              icon: const Icon(Icons.directions, color: Colors.blue),
+                              onPressed: () => openInMaps('${_selected!.lat}, ${_selected!.lng}'),
                             ),
                             IconButton(
                               icon: const Icon(Icons.close),
@@ -175,6 +204,49 @@ class _MapScreenState extends State<MapScreen> {
                   ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Marker> _getStoreMarkers(int storeId) {
+    final store = _stores.firstWhereOrNull((s) => s.id == storeId);
+    if (store == null) return [];
+    return [
+      Marker(
+        point: LatLng(store.lat, store.lng),
+        width: 28,
+        height: 28,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.orange,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 3),
+            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+          ),
+          child: const Icon(Icons.shop, color: Colors.white, size: 20),
+        ),
+      ),
+    ];
+  }
+
+  Widget _buildZoomControls() {
+    return Positioned(
+      right: 16,
+      bottom: 120,
+      child: Column(
+        children: [
+          FloatingActionButton.small(
+            heroTag: 'zoomIn',
+            onPressed: () => _mapController.move(_mapController.camera.center, _mapController.camera.zoom + 1),
+            child: const Icon(Icons.add),
+          ),
+          const SizedBox(height: 8),
+          FloatingActionButton.small(
+            heroTag: 'zoomOut',
+            onPressed: () => _mapController.move(_mapController.camera.center, _mapController.camera.zoom - 1),
+            child: const Icon(Icons.remove),
           ),
         ],
       ),
@@ -200,7 +272,7 @@ class _MapScreenState extends State<MapScreen> {
                 _hidden.remove(l.brand);
               } else {
                 _hidden.add(l.brand);
-                if (_selected != null && prettyChainName(_selected!.chainName) == l.brand) {
+                if (_selected != null && prettyChainName(_selected!.chainSlug) == l.brand) {
                   _selected = null;
                 }
               }
@@ -213,7 +285,12 @@ class _MapScreenState extends State<MapScreen> {
                     ? Theme.of(context).colorScheme.outlineVariant
                     : chainColor(l.slug).withOpacity(0.15),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: chainColor(l.slug), width: hidden ? 0 : 1),
+                border: Border.all(
+                    color: hidden ? Theme.of(context).colorScheme.outlineVariant : chainColor(l.slug), 
+                    width: hidden ? 0 : 1),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black26, blurRadius: 2),
+                ],
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,

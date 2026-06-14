@@ -32,6 +32,7 @@ import 'basket_screen.dart';
 import 'map_screen.dart';
 import 'promotions_screen.dart';
 import 'settings_screen.dart';
+import 'location_settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -43,6 +44,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final ApiService _api = ApiService();
   final LocationService _location = LocationService();
+    final GlobalKey _resultsKey = GlobalKey();
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
@@ -182,12 +184,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         'matches': result.matches.length,
       });
 
-      // Scroll to results
-      _scrollController.animateTo(
-        300, // scroll past categories to results area
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
+      if (_resultsKey.currentContext != null) {
+        Scrollable.ensureVisible(
+          _resultsKey.currentContext!,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
     } catch (e) {
       setState(() {
         _searchError = e.toString();
@@ -196,34 +199,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
-  /// Handle category tap — drill down or search.
-  void _handleCategoryTap(String slug, String label) {
-    setState(() {
-      if (_selectedCategory == slug) {
-        // Deselect
-        _selectedCategory = null;
-      } else {
-        _selectedCategory = slug;
-      }
-    });
-
-    // Perform search for this category
-    _performSearch('cat:$slug', displayQuery: label);
-  }
-
-  /// Handle group expansion toggle — when opening, auto-select first category.
+  /// Web v2 parity: toggle group → show/hide subcats. Auto-select first category on open.
   void _toggleGroup(int index) {
     final wasOpen = _openGroupIndex == index;
 
     setState(() {
       if (wasOpen) {
-        // Collapsing: clear selection and results
+        // Collapsing: hide subcats, keep search results visible
         _openGroupIndex = null;
         _selectedCategory = null;
-        _currentResult = null;
-        _lastQuery = null;
       } else {
-        // Opening: expand group AND auto-select first category → fire search
+        // Opening: show this group's subcats, auto-select first category → fire search
         _openGroupIndex = index;
         final slugs = kCatGroups[index].slugs
             .where((s) => _categories.any((c) => c.slug == s))
@@ -232,12 +218,47 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           final firstSlug = slugs.first;
           final firstCat = _categories.firstWhere((c) => c.slug == firstSlug);
           _selectedCategory = firstSlug;
-          // Fire search immediately — don't wait for user to tap subcategory
+          // Auto-fire search for first category (Web v2 behavior)
           _performSearch('cat:$firstSlug', displayQuery: firstCat.label);
         }
       }
     });
   }
+
+
+  Future<void> _openLocationSettings() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (ctx) => LocationSettingsScreen(
+          lat: _lat,
+          lng: _lng,
+          radiusKm: _radiusKm,
+          locationLabel: _locationLabel,
+          selectedChains: Set.from(_chainFilter),
+        ),
+      ),
+    );
+    if (result != null && mounted) {
+      setState(() {
+        if (result['radiusKm'] != null) {
+          _radiusKm = result['radiusKm'];
+        }
+        if (result['label'] != null) {
+          _locationLabel = result['label'];
+        }
+        if (result['selectedChains'] != null) {
+          _chainFilter.clear();
+          _chainFilter.addAll(result['selectedChains'] as Set<String>);
+        }
+      });
+      // Re-search with updated chain filter
+      if (_lastQuery != null) {
+        _performSearch(_lastQuery!, displayQuery: _lastQuery);
+      }
+    }
+  }
+
 
   /// Open location/settings panel (bottom sheet).
   void _openLocationPanel() {
@@ -253,6 +274,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         storesCount: _storesCount,
         onRadiusChanged: (km) {
           setState(() => _radiusKm = km);
+          if (_lastQuery != null) {
+            _performSearch(_lastQuery!, displayQuery: _lastQuery);
+          }
         },
         onLocationChanged: (String label, double newLat, double newLng) async {
           setState(() {
@@ -275,6 +299,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             final stores = await _api.getNearbyStores(newLat, newLng, radiusKm: _radiusKm);
             setState(() => _storesCount = stores.length);
           } catch (_) {}
+
+          if (_lastQuery != null) {
+            _performSearch(_lastQuery!, displayQuery: _lastQuery);
+          }
         },
       ),
     );
@@ -312,11 +340,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   /// Open the store map.
-  void _openMap() {
+  void _openMap({String? productQuery}) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (ctx) => MapScreen(lat: _lat, lng: _lng, radiusKm: _radiusKm),
+        builder: (ctx) => MapScreen(
+          lat: _lat,
+          lng: _lng,
+          radiusKm: _radiusKm,
+          productQuery: productQuery,
+        ),
       ),
     );
   }
@@ -466,7 +499,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               locationText: _locationLabel != null
                   ? '${_locationLabel!} · $_storesCount магазина'
                   : 'Намери магазини…',
-              onTap: _openLocationPanel,
+              onTap: _openLocationSettings,
             ),
 
             // 3. Search bar
@@ -551,6 +584,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   /// Category groups section — horizontal wrap of group chips (mirrors the web
   /// header), with the open group's subcategories shown full-width below.
+  /// Compact horizontal group row + category chips + initial articles.
+  /// Web v2 parity: groups row always visible, subcats only when group selected.
   Widget _buildCategoryGroups() {
     final groups = <MapEntry<int, CatGroup>>[];
     for (var i = 0; i < kCatGroups.length; i++) {
@@ -560,165 +595,169 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
     if (groups.isEmpty) return const SizedBox.shrink();
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // Subcats: only show when a group is active (Web v2 behavior)
+    final subcatWidgets = <Widget>[];
+    if (_openGroupIndex != null && _openGroupIndex! >= 0) {
+      final g = kCatGroups[_openGroupIndex!];
+      for (final slug in g.slugs) {
+        try {
+          final cat = _categories.firstWhere((c) => c.slug == slug);
+          subcatWidgets.add(_buildSubcatChip(cat, g));
+        } catch (_) {}
+      }
+    }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // GROUP CHIPS — large, bold, with icon + arrow. Clearly the primary navigation level.
-          Wrap(
-            spacing: 8,
-            runSpacing: 10,
-            children: groups.map((e) {
-              final idx = e.key;
-              final group = e.value;
-              final isExpanded = _openGroupIndex == idx;
-              return InkWell(
-                onTap: () => _toggleGroup(idx),
-                borderRadius: BorderRadius.circular(24),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: isExpanded
-                        ? Theme.of(context).colorScheme.primary.withOpacity(0.15)
-                        : (isDark ? Color(0xFF2A2D34) : Color(0xFFF5F5F5)),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(
-                      color: isExpanded
-                          ? Theme.of(context).colorScheme.primary
-                          : (isDark ? Color(0xFF3A3D44) : Colors.grey.shade300),
-                      width: isExpanded ? 2.0 : 1.0,
+          // GROUP ROW — always visible with all groups + Промоции button
+          SizedBox(
+            height: 30,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: groups.length + 1, // +1 for Промоции
+              itemBuilder: (ctx, i) {
+                // First item is Промоции button (Web v2 parity)
+                if (i == 0) {
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: InkWell(
+                      onTap: _openPromotions,
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Colors.transparent, width: 1.2),
+                        ),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: const [
+                          Text('🏷️', style: TextStyle(fontSize: 13)),
+                          SizedBox(width: 3),
+                          Text('Промоции', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                        ]),
+                      ),
                     ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(_groupIcon(group.label),
-                          size: 22,
-                          color: isExpanded
-                              ? Theme.of(context).colorScheme.primary
-                              : (isDark ? Color(0xFFBDBDBD) : Color(0xFF616161))),
-                      const SizedBox(width: 8),
-                      Text(
-                        group.label,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: isExpanded
-                              ? Theme.of(context).colorScheme.primary
-                              : (isDark ? Color(0xFFE0E0E0) : Color(0xFF212121)),
+                  );
+                }
+
+                // Group chips
+                final idx = groups[i - 1].key;
+                final group = groups[i - 1].value;
+                final isExpanded = _openGroupIndex == idx;
+                final (iconData, iconColor) = _groupIconWithColor(group.label);
+                return Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: InkWell(
+                    onTap: () => _toggleGroup(idx),
+                    borderRadius: BorderRadius.circular(14),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: isExpanded ? iconColor.withOpacity(0.15) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: isExpanded ? iconColor : Colors.transparent,
+                          width: 1.2,
                         ),
                       ),
-                      const SizedBox(width: 6),
-                      Icon(
-                        isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-                        size: 20,
-                        color: isExpanded
-                            ? Theme.of(context).colorScheme.primary
-                            : (isDark ? Color(0xFF9E9E9E) : Color(0xFF757575)),
-                      ),
-                    ],
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(iconData, size: 14, color: iconColor),
+                        const SizedBox(width: 3),
+                        Text(
+                          group.label,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: isExpanded ? FontWeight.w700 : FontWeight.w500,
+                            color: isExpanded ? iconColor : null,
+                          ),
+                        ),
+                      ]),
+                    ),
                   ),
-                ),
-              );
-            }).toList(),
-          ),
-          // SUBCATEGORIES — only shown when group is expanded. Smaller, secondary chips.
-          if (_openGroupIndex != null) ...[
-            const SizedBox(height: 14),
-            // Section label to make it clear these are subcategories of the group above
-            Padding(
-              padding: const EdgeInsets.only(left: 4, bottom: 6),
-              child: Text(
-                'Категории',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: isDark ? Color(0xFF9E9E9E) : Colors.grey.shade600,
-                ),
-              ),
+                );
+              },
             ),
-            _buildSubcategories(_openGroupIndex!),
+          ),
+
+          // SUBCATS — only visible when a group is selected (Web v2 behavior)
+          if (subcatWidgets.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 4,
+              runSpacing: 3,
+              children: subcatWidgets,
+            ),
           ],
         ],
       ),
     );
   }
 
-  /// Subcategory chips for the expanded group (full width, below the chips row).
-  Widget _buildSubcategories(int groupIdx) {
-    if (groupIdx < 0 || groupIdx >= kCatGroups.length) return const SizedBox.shrink();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final activeSlugs = kCatGroups[groupIdx].slugs
-        .where((s) => _categories.any((c) => c.slug == s))
-        .toList();
-    if (activeSlugs.isEmpty) return const SizedBox.shrink();
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: activeSlugs.map((slug) {
-        final cat = _categories.firstWhere((c) => c.slug == slug);
-        final isSelected = _selectedCategory == slug;
-        return InkWell(
-          onTap: () => _handleCategoryTap(slug, cat.label),
-          borderRadius: BorderRadius.circular(20),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? Theme.of(context).colorScheme.primary
-                  : (isDark ? Color(0xFF3A3D44) : Colors.grey.shade200),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: isSelected
-                    ? Theme.of(context).colorScheme.primary
-                    : (isDark ? Color(0xFF4A4D54) : Colors.grey.shade300),
-                width: isSelected ? 1.5 : 1.0,
-              ),
-            ),
-            child: Text(
-              cat.label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: isSelected
-                    ? Colors.white
-                    : (isDark ? Color(0xFFBDBDBD) : Color(0xFF424242)),
-              ),
+  /// Build a single subcategory chip (Web v2 style).
+  Widget _buildSubcatChip(Category cat, CatGroup group) {
+    final isSelected = _selectedCategory == cat.slug;
+    final (_, iconColor) = _groupIconWithColor(group.label);
+    return Padding(
+      padding: const EdgeInsets.only(right: 4, bottom: 3),
+      child: InkWell(
+        onTap: () {
+          final catLabel = cat.label;
+          setState(() {
+            _selectedCategory = (_selectedCategory == cat.slug) ? null : cat.slug;
+          });
+          // Web v2: subcat click sets query and runs search
+          _searchController.text = catLabel;
+          _performSearch('cat:${cat.slug}', displayQuery: catLabel);
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? iconColor.withOpacity(0.15)
+                : Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected ? iconColor : Colors.transparent,
+              width: 1,
             ),
           ),
-        );
-      }).toList(),
+          child: Text(
+            cat.label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              color: isSelected ? iconColor : null,
+            ),
+          ),
+        ),
+      ),
     );
   }
 
-  /// Material icon for a category group (emoji do not render on old Android).
-  IconData _groupIcon(String label) {
+  /// Colorful icon + color for each category group — matches web v2 visual style.
+  (IconData icon, Color color) _groupIconWithColor(String label) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     switch (label) {
-      case 'Основни и варива':
-        return Icons.bakery_dining;
-      case 'Мляко и яйца':
-        return Icons.egg_alt;
+      case 'Млечни':
+        return (Icons.lunch_dining, const Color(0xFF42A5F5)); // milk blue
       case 'Месо и риба':
-        return Icons.set_meal;
-      case 'Зеленчуци':
-        return Icons.eco;
-      case 'Плодове':
-        return Icons.apple;
-      case 'Сладко':
-        return Icons.cake;
-      case 'Олио и мазнини':
-        return Icons.water_drop;
+        return (Icons.set_meal, const Color(0xFFD32F2F)); // meat red
+      case 'Плодове и зеленчуци':
+        return (Icons.eco, const Color(0xFF43A047)); // fresh green
+      case 'Основни':
+        return (Icons.kitchen, const Color(0xFFD4A24E)); // warm wheat
+      case 'Лакомства':
+        return (Icons.cake, const Color(0xFF6D4C41)); // chocolate brown
       case 'Напитки':
-        return Icons.local_cafe;
-      case 'Алкохол':
-        return Icons.wine_bar;
+        return (Icons.local_bar, const Color(0xFFFF7043)); // drink orange
       case 'Дом и хигиена':
-        return Icons.cleaning_services;
+        return (Icons.cleaning_services, const Color(0xFF039BE5)); // blue
       default:
-        return Icons.category;
+        return (Icons.category, isDark ? Colors.grey.shade400 : Colors.grey.shade600);
     }
   }
 
@@ -859,6 +898,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
 
     return Column(
+      key: _resultsKey,
+
       children: [
         // Results header
         Padding(
@@ -899,6 +940,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               isFav: _favorites.contains(match.display.trim().toLowerCase()),
               onAddToBasket: () => _addToBasket(match.display),
               onToggleFav: () => _toggleFav(match.display),
+              onOpenMap: () => _openMap(productQuery: match.display),
             )),
 
         // Loose matches section
@@ -910,7 +952,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ),
-          ...loose.map((looseMatch) => _LooseCard(loose: looseMatch)),
+          ...loose.map((looseMatch) => _LooseCard(
+              loose: looseMatch,
+              onOpenMap: () => _openMap(productQuery: looseMatch.rawName),
+            )),
         ],
 
         const SizedBox(height: 16),
@@ -942,7 +987,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               _openPromotions();
               break;
             case 2:
-              _openMap();
+              _openMap(); // no product — general store map
               break;
           }
         },
@@ -1195,15 +1240,19 @@ class _LocationFilterSheetState extends State<_LocationFilterSheet> {
 /// Loose match card — approximate product matches.
 class _LooseCard extends StatelessWidget {
  final LooseResult loose;
+ final VoidCallback? onOpenMap;
 
- const _LooseCard({required this.loose});
+ const _LooseCard({required this.loose, this.onOpenMap});
 
  @override
  Widget build(BuildContext context) {
    final isDark = Theme.of(context).brightness == Brightness.dark;
    final isPromo = loose.priceRetail != null && loose.price < loose.priceRetail!;
 
-   return Container(
+   return Material(color: Colors.transparent, child: InkWell(
+     onTap: onOpenMap ?? () {},
+     borderRadius: BorderRadius.circular(10),
+     child: Container(
      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
      decoration: BoxDecoration(
        color: isDark ? Theme.of(context).colorScheme.surface : Colors.white,
@@ -1252,251 +1301,157 @@ class _LooseCard extends StatelessWidget {
          ],
        ),
      ),
-   );
+    ), // end Container
+  ), // end InkWell
+); // end Material
  }
 }
 
 /// Product comparison card — matches web v2 design.
-class _ProductCard extends StatelessWidget {
+class _ProductCard extends StatefulWidget {
   final MatchResult match;
   final bool isFav;
   final VoidCallback onAddToBasket;
   final VoidCallback onToggleFav;
+  final VoidCallback onOpenMap;
 
   const _ProductCard({
     required this.match,
     required this.isFav,
     required this.onAddToBasket,
     required this.onToggleFav,
+    required this.onOpenMap,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+  State<_ProductCard> createState() => _ProductCardState();
+}
 
-    // Hero Card with accent-colored left border (matches web v2 design)
-    final accentColor = Theme.of(context).colorScheme.primary;
+class _ProductCardState extends State<_ProductCard> {
+  bool _expanded = false;
+
+  Widget _promoBadge(int pct, Color promo) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+        decoration: BoxDecoration(color: promo, borderRadius: BorderRadius.circular(4)),
+        child: Text('\u2212$pct%',
+            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.white)),
+      );
+
+  Widget _iconBtn(IconData icon, Color color, VoidCallback onTap, String tip) => IconButton(
+        onPressed: onTap,
+        icon: Icon(icon, size: 20, color: color),
+        tooltip: tip,
+        visualDensity: VisualDensity.compact,
+        padding: const EdgeInsets.all(6),
+        constraints: const BoxConstraints(),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final m = widget.match;
+    final c0 = m.cheapest;
+    final promo = isDark ? const Color(0xFFFF6B6B) : const Color(0xFFD23B3B);
+    final more = m.chains.length - 1;
+
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      margin: const EdgeInsets.fromLTRB(12, 5, 12, 5),
       decoration: BoxDecoration(
-        color: isDark ? Theme.of(context).colorScheme.surface : Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.outlineVariant),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
-            blurRadius: 18,
-            offset: const Offset(0, 4),
+            color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Accent-colored left strip (Hero Card indicator)
-          Container(width: 3, decoration: BoxDecoration(color: accentColor, borderRadius: BorderRadius.circular(10))),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(13, 11, 6, 9),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Product name + qty
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Text(
-                    match.display,
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: isDark ? Theme.of(context).colorScheme.onSurface : Colors.black87),
-                  ),
-                ),
-                if (match.qty != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: isDark ? Theme.of(context).colorScheme.outlineVariant : Colors.grey.shade200,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      match.qty.toString(),
-                      style: TextStyle(fontSize: 11, color: isDark ? Theme.of(context).colorScheme.onSurfaceVariant : Theme.of(context).colorScheme.onSurfaceVariant),
-                    ),
-                  ),
-                IconButton(
-                  onPressed: onToggleFav,
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.only(left: 6),
-                  constraints: const BoxConstraints(),
-                  tooltip: 'Любими',
-                  icon: Icon(
-                    isFav ? Icons.favorite : Icons.favorite_border,
-                    size: 18,
-                    color: isFav ? Colors.redAccent : Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 8),
-
-            // Cheapest chain highlight
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          match.cheapest.chainName,
-                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.secondary),
-                        ),
-                        if (match.cheapest.isPromo)
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: Colors.redAccent.withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(3),
-                                ),
-                                child: Text(
-                                  '-${match.cheapest.pctOff}%',
-                                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.redAccent),
-                                ),
-                              ),
-                              if (match.cheapest.priceRetail != null) ...[
-                                const SizedBox(width: 6),
-                                Text(
-                                  '${match.cheapest.priceRetail?.toStringAsFixed(2) ?? ''} €',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    decoration: TextDecoration.lineThrough,
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                      ],
-                    ),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '${match.cheapest.minPrice.toStringAsFixed(2)} €',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.secondary),
+                      Text(m.display,
+                          style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, height: 1.25, color: cs.onSurface)),
+                      const SizedBox(height: 4),
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text('\u043e\u0442 ', style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+                          Text('${c0.minPrice.toStringAsFixed(2)} \u20ac',
+                              style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: cs.onSurface)),
+                          if (c0.isPromo)
+                            Padding(padding: const EdgeInsets.only(left: 6), child: _promoBadge(c0.pctOff ?? 0, promo)),
+                          Text('  \u00b7  ${c0.chainName}', style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+                          if (more > 0)
+                            Text('  \u00b7  +$more \u043e\u0449\u0435', style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+                        ],
                       ),
-                      if (match.cheapest.nStores != null && match.cheapest.nStores! > 1)
-                        Text(
-                          '${match.cheapest.nStores!} магазина',
-                          style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                        ),
                     ],
                   ),
-                ],
-              ),
+                ),
+                _iconBtn(widget.isFav ? Icons.favorite : Icons.favorite_border,
+                    widget.isFav ? Colors.redAccent : cs.onSurfaceVariant, widget.onToggleFav, '\u041b\u044e\u0431\u0438\u043c\u0438'),
+                _iconBtn(Icons.add_shopping_cart, cs.primary, widget.onAddToBasket, '\u0414\u043e\u0431\u0430\u0432\u0438 \u0432 \u043a\u043e\u0448\u043d\u0438\u0446\u0430\u0442\u0430'),
+              ],
             ),
-
-            const SizedBox(height: 6),
-
-            // Other chains
-            ...match.chains.skip(1).map((chain) => Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Row(
-                children: [
-                  // Colored chain dot
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      chain.chainName,
-                      style: TextStyle(fontSize: 12, color: isDark ? Theme.of(context).colorScheme.onSurface : Colors.black87),
-                    ),
-                  ),
-                  if (chain.isPromo) ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: Colors.redAccent.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                      child: Text(
-                        '-${chain.pctOff}%',
-                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.redAccent),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                  ],
-                  Text(
-                    '${chain.minPrice.toStringAsFixed(2)} €',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: isDark ? Theme.of(context).colorScheme.onSurface : Colors.black87,
-                    ),
-                  ),
-                ],
-              ),
-            )),
-
-            // Spread info
-            if (match.spread != null && match.spread!.pct > 0)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline, size: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Разлика ${match.spread!.pct}% (${match.spread!.min.toStringAsFixed(2)} — ${match.spread!.max.toStringAsFixed(2)} €)',
-                      style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                    ),
-                  ],
+            if (m.chains.length > 1) ...[
+              InkWell(
+                onTap: () => setState(() => _expanded = !_expanded),
+                borderRadius: BorderRadius.circular(6),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Text('${m.chains.length} \u0432\u0435\u0440\u0438\u0433\u0438 \u2014 \u0432\u0438\u0436 \u0432\u0441\u0438\u0447\u043a\u0438 \u0446\u0435\u043d\u0438',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: cs.primary)),
+                    Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 18, color: cs.primary),
+                  ]),
                 ),
               ),
-
-            // Add to basket button
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: onAddToBasket,
-                      icon: const Icon(Icons.shopping_basket_outlined, size: 16),
-                      label: const Text('Добави в кошницата', style: TextStyle(fontSize: 12)),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        textStyle: const TextStyle(fontSize: 12),
-                      ),
-                    ),
-                  ),
-                ],
+              if (_expanded)
+                ...m.chains.map((c) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 5),
+                      child: Row(children: [
+                        Container(width: 9, height: 9, decoration: BoxDecoration(color: chainColor(c.chainSlug), shape: BoxShape.circle)),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(c.chainName, style: TextStyle(fontSize: 12.5, color: cs.onSurface))),
+                        if (c.isPromo)
+                          Padding(padding: const EdgeInsets.only(right: 6), child: _promoBadge(c.pctOff ?? 0, promo)),
+                        Text('${c.minPrice.toStringAsFixed(2)} \u20ac',
+                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: cs.onSurface)),
+                      ]),
+                    )),
+            ],
+            InkWell(
+              onTap: widget.onOpenMap,
+              borderRadius: BorderRadius.circular(6),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.map_outlined, size: 15, color: cs.onSurfaceVariant),
+                  const SizedBox(width: 5),
+                  Text('\u0412\u0438\u0436 \u043c\u0430\u0433\u0430\u0437\u0438\u043d\u0438\u0442\u0435 \u043d\u0430 \u043a\u0430\u0440\u0442\u0430\u0442\u0430',
+                      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                ]),
               ),
             ),
           ],
         ),
-            ), // end Padding
-          ), // end Expanded
-        ], // end Row children
       ),
     );
   }
 }
+
 /// Bottom sheet listing saved favorites. Tap to search, ✕ to remove.
 class _FavoritesSheet extends StatefulWidget {
   final void Function(String query) onSearch;

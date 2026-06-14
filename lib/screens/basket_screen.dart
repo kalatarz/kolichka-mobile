@@ -8,6 +8,7 @@ import '../services/local_store.dart';
 import '../services/analytics.dart';
 import 'package:share_plus/share_plus.dart';
 import '../services/external.dart';
+import 'map_screen.dart';
 
 class BasketScreen extends StatefulWidget {
   final double lat;
@@ -144,6 +145,7 @@ class _BasketScreenState extends State<BasketScreen> {
       if (!mounted) return;
       setState(() => _famCode = code);
       _showFamCode(code);
+      await _famLoad();
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -627,7 +629,19 @@ class _StoreCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       child: InkWell(
         onTap: () {
-          // Future: Navigate to store details
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => MapScreen(
+                lat: store.lat,
+                lng: store.lng,
+                radiusKm: 3,
+                articleStoreId: store.storeId,
+                articleLat: store.lat,
+                articleLng: store.lng,
+              ),
+            ),
+          );
         },
         child: Padding(
           padding: const EdgeInsets.all(14),
@@ -658,7 +672,7 @@ class _StoreCard extends StatelessWidget {
                 IconButton(
                   tooltip: 'Навигация',
                   icon: Icon(Icons.directions, color: Theme.of(context).colorScheme.primary),
-                  onPressed: () => openInMaps(store.lat, store.lng),
+                  onPressed: () => openInMaps('${store.lat}, ${store.lng}'),
                 ),
                 Column(
                   mainAxisSize: MainAxisSize.min,

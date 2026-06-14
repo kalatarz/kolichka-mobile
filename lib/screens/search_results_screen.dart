@@ -353,7 +353,7 @@ class LooseCard extends StatelessWidget {
       child: InkWell(
         onTap: () {
           final query = loose.address != null ? '${loose.chainName}, ${loose.address}' : loose.chainName;
-          openInMaps(0, 0, query);
+          openInMaps(query);
         },
         child: ListTile(
           leading: Icon(Icons.store, size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant),
