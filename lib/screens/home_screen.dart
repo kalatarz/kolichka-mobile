@@ -773,7 +773,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget _buildResults() {
     final result = _currentResult!;
     final matches = result.matches;
-    final loose = result.loose;
+    final loose = result.loose.where((l) => l.price > 0).toList();
     final chainsPresent = <String, String>{};
     for (final m in matches) {
       for (final c in m.chains) {
@@ -887,7 +887,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: 'Начало'),
           BottomNavigationBarItem(icon: Icon(Icons.local_offer_outlined), label: 'Промоции'),
           BottomNavigationBarItem(icon: Icon(Icons.map_outlined), label: 'Карта'),
-          BottomNavigationBarItem(icon: Icon(Icons.settings_outlined), label: 'Настройки'),
         ],
         onTap: (idx) {
           switch (idx) {
@@ -898,9 +897,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               break;
             case 2:
               _openMap();
-              break;
-            case 3:
-              _openSettings();
               break;
           }
         },
@@ -1030,7 +1026,7 @@ class _LocationFilterSheetState extends State<_LocationFilterSheet> {
                         child: TextField(
                           controller: _locController,
                           decoration: InputDecoration(
-                            hintText: 'град или адрес…',
+                            hintText: 'Град или адрес…',
                             isDense: true,
                             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                           ),
@@ -1041,7 +1037,7 @@ class _LocationFilterSheetState extends State<_LocationFilterSheet> {
                       FilledButton.icon(
                         onPressed: _useMyLocation,
                         icon: const Icon(Icons.my_location, size: 16),
-                        label: const Text('моята'),
+                        label: const Text('Моето местоположение'),
                       ),
                     ],
                   ),
@@ -1232,15 +1228,30 @@ class _ProductCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    // Hero Card with accent-colored left border (matches web v2 design)
+    final accentColor = Theme.of(context).colorScheme.primary;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
         color: isDark ? Theme.of(context).colorScheme.surface : Colors.white,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
+            blurRadius: 18,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Accent-colored left strip (Hero Card indicator)
+          Container(width: 3, decoration: BoxDecoration(color: accentColor, borderRadius: BorderRadius.circular(10))),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1354,6 +1365,16 @@ class _ProductCard extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 4),
               child: Row(
                 children: [
+                  // Colored chain dot
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       chain.chainName,
@@ -1423,11 +1444,13 @@ class _ProductCard extends StatelessWidget {
             ),
           ],
         ),
+            ), // end Padding
+          ), // end Expanded
+        ], // end Row children
       ),
     );
   }
 }
-
 /// Bottom sheet listing saved favorites. Tap to search, ✕ to remove.
 class _FavoritesSheet extends StatefulWidget {
   final void Function(String query) onSearch;

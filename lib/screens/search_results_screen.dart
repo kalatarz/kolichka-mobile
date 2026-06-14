@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/compare_result.dart';
 import "../services/api_service.dart";
 import "../services/local_store.dart";
+import "../services/external.dart";
 
 class SearchResultsScreen extends StatefulWidget {
   final String query;
@@ -90,7 +91,8 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
 
   Widget _buildResults() {
     final result = _result!;
-    if (result.matches.isEmpty && result.loose.isEmpty) {
+    final loose = result.loose.where((l) => l.price > 0).toList();
+    if (result.matches.isEmpty && loose.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -130,16 +132,16 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
           ...result.matches.map((match) => MatchCard(match: match)),
 
           // Loose results
-          if (result.loose.isNotEmpty) ...[
+          if (loose.isNotEmpty) ...[
             const Divider(height: 24),
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Text(
-                'Други резултати',
+                'Други резултати (${loose.length})',
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ),
-            ...result.loose.map((loose) => LooseCard(loose: loose)),
+            ...loose.map((l) => LooseCard(loose: l)),
           ],
           const SizedBox(height: 80),
         ],
@@ -338,7 +340,6 @@ class MatchCard extends StatelessWidget {
     );
   }
 }
-
 /// Card for a loose (non-canonical) result.
 class LooseCard extends StatelessWidget {
   final LooseResult loose;
@@ -349,9 +350,15 @@ class LooseCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        title: Text(loose.rawName, style: const TextStyle(fontSize: 13)),
-        subtitle: Text(loose.chainName),
+      child: InkWell(
+        onTap: () {
+          final query = loose.address != null ? '${loose.chainName}, ${loose.address}' : loose.chainName;
+          openInMaps(0, 0, query);
+        },
+        child: ListTile(
+          leading: Icon(Icons.store, size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant),
+          title: Text(loose.rawName, style: const TextStyle(fontSize: 13)),
+          subtitle: Text('${loose.chainName}${loose.address != null ? ' · ${loose.address}' : ''}'),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -378,6 +385,7 @@ class LooseCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
       ),
     );
   }

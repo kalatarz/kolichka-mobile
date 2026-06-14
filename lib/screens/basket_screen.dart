@@ -36,6 +36,26 @@ class _BasketScreenState extends State<BasketScreen> {
   String? _error;
   String? _famCode; // joined shared/family basket code
 
+  // Autocomplete for product suggestions
+  List<String> _suggestions = [];
+  bool _showSuggestions = false;
+
+  /// Common Bulgarian grocery items for autocomplete.
+  static const _commonProducts = <String>[
+    'мляко', 'извара', 'сирене', 'кашкавал', 'путер',
+    'хляб', 'чиабатa', 'палачинки', 'кисело мляко',
+    'яйца', 'пилешко', 'шунка', 'сухар', 'колбас',
+    'захар', 'сол', 'брашно', 'макарони', 'ориз',
+    'олио', 'зехтин', 'сок', 'вода', 'кола',
+    'чай', 'кафе', 'шоколад', 'бисквити', 'чипс',
+    'плодове', 'зелки', 'домати', 'краставици', 'картофи',
+    'банани', 'ябълки', 'портокали', 'лимон',
+    'кetchup', 'майонеза', 'горчица', 'соус',
+    'пастетa', 'консерва', 'туна', 'риба',
+    'пица', 'бургер', 'суши', 'ледено сладолед',
+    'вино', 'бира', 'минерална вода', 'еко мляко',
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -231,11 +251,16 @@ class _BasketScreenState extends State<BasketScreen> {
     );
   }
 
-  void _addItem() {
-    final text = _controller.text.trim();
+  void _addItem({String? suggestion}) {
+    final text = (suggestion ?? _controller.text).trim();
     if (text.isEmpty) return;
     if (_items.any((e) => e.toLowerCase() == text.toLowerCase())) {
       _controller.clear();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('"$text" вече е в кошницата'), duration: const Duration(seconds: 1)),
+        );
+      }
       return;
     }
     setState(() {
@@ -244,6 +269,11 @@ class _BasketScreenState extends State<BasketScreen> {
     });
     _persist();
     _famSync();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Добавено: $text'), duration: const Duration(seconds: 1)),
+      );
+    }
   }
 
   Future<void> _removeItem(int index) async {
@@ -355,7 +385,7 @@ class _BasketScreenState extends State<BasketScreen> {
                     child: Padding(padding: EdgeInsets.all(4), child: Icon(Icons.refresh, size: 18, color: Theme.of(context).colorScheme.primary))),
               ]),
             ),
-          // Add-item row
+          // Add-item row with autocomplete
           Padding(
             padding: const EdgeInsets.all(12),
             child: Row(
@@ -363,18 +393,57 @@ class _BasketScreenState extends State<BasketScreen> {
                 Expanded(
                   child: TextField(
                     controller: _controller,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       hintText: 'Добави продукт (напр. хляб)',
                       isDense: true,
+                      suffixIcon: _showSuggestions && _suggestions.isNotEmpty
+                          ? null
+                          : null,
                     ),
                     onSubmitted: (_) => _addItem(),
+                    onChanged: (text) {
+                      setState(() {
+                        if (text.length >= 2) {
+                          _suggestions = _commonProducts.where((p) =>
+                              p.toLowerCase().contains(text.toLowerCase()) &&
+                              !_items.any((e) => e.toLowerCase() == p.toLowerCase())
+                          ).take(5).toList();
+                          _showSuggestions = true;
+                        } else {
+                          _suggestions = [];
+                          _showSuggestions = false;
+                        }
+                      });
+                    },
                   ),
                 ),
                 const SizedBox(width: 8),
-                FilledButton(onPressed: _addItem, child: const Icon(Icons.add)),
+                FilledButton(onPressed: () {
+                  setState(() => _showSuggestions = false);
+                  _addItem();
+                }, child: const Icon(Icons.add)),
               ],
             ),
           ),
+          // Autocomplete suggestions dropdown
+          if (_showSuggestions && _suggestions.isNotEmpty)
+            Container(
+              constraints: const BoxConstraints(maxHeight: 150),
+              color: Theme.of(context).colorScheme.surface,
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: _suggestions.length,
+                itemBuilder: (context, index) {
+                  final suggestion = _suggestions[index];
+                  return ListTile(
+                    leading: Icon(Icons.search, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    title: Text(suggestion),
+                    dense: true,
+                    onTap: () => _addItem(suggestion: suggestion),
+                  );
+                },
+              ),
+            ),
           if (_items.isNotEmpty) _buildCounter(),
           Expanded(
             child: ListView(

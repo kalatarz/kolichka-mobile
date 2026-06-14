@@ -1,4 +1,4 @@
-/// Promotions / deals screen.
+/// Promotions / deals screen with chain filter chips and store locations.
 library;
 
 import 'package:flutter/material.dart';
@@ -27,6 +27,8 @@ class _PromotionsScreenState extends State<PromotionsScreen> {
   PromotionsResponse? _result;
   bool _loading = true;
   String? _error;
+  // Chain filter: empty means all chains shown
+  final Set<String> _chainFilter = {};
 
   @override
   void initState() {
@@ -52,6 +54,22 @@ class _PromotionsScreenState extends State<PromotionsScreen> {
         _loading = false;
       });
     }
+  }
+
+  void _toggleChain(String slug) {
+    setState(() {
+      if (_chainFilter.contains(slug)) {
+        _chainFilter.remove(slug);
+      } else {
+        _chainFilter.add(slug);
+      }
+    });
+  }
+
+  List<PromoChain> get _filteredChains {
+    final chains = _result?.chains ?? [];
+    if (_chainFilter.isEmpty) return chains;
+    return chains.where((c) => _chainFilter.contains(c.chainSlug)).toList();
   }
 
   @override
@@ -91,27 +109,93 @@ class _PromotionsScreenState extends State<PromotionsScreen> {
       );
     }
 
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(12),
-        itemCount: result.chains.length,
-        itemBuilder: (context, index) {
-          final chain = result.chains[index];
-          return ChainPromoCard(chain: chain);
-        },
-      ),
+    return Column(
+      children: [
+        // Chain filter chips row
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+            border: Border(
+              bottom: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+            ),
+          ),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                // "All" chip
+                FilterChip(
+                  label: Text('Всички (${result.chains.length})'),
+                  selected: _chainFilter.isEmpty,
+                  onSelected: (_) => setState(() => _chainFilter.clear()),
+                  selectedColor: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                  checkmarkColor: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 6),
+                // Per-chain chips
+                ...result.chains.map((c) => Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: FilterChip(
+                    label: Text(c.chainName),
+                    selected: _chainFilter.contains(c.chainSlug),
+                    onSelected: (_) => _toggleChain(c.chainSlug),
+                    selectedColor: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                    checkmarkColor: Theme.of(context).colorScheme.primary,
+                  ),
+                )),
+              ],
+            ),
+          ),
+        ),
+
+        // Filtered results
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _load,
+            child: _filteredChains.isEmpty
+                ? Center(
+                    child: Text('Няма промоции за избраните вериги', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: _filteredChains.length,
+                    itemBuilder: (context, index) {
+                      final chain = _filteredChains[index];
+                      return ChainPromoCard(
+                        chain: chain,
+                        lat: widget.lat,
+                        lng: widget.lng,
+                        radiusKm: widget.radiusKm,
+                      );
+                    },
+                  ),
+          ),
+        ),
+      ],
     );
   }
 }
 
 class ChainPromoCard extends StatelessWidget {
   final PromoChain chain;
+  final double lat;
+  final double lng;
+  final double radiusKm;
 
-  const ChainPromoCard({super.key, required this.chain});
+  const ChainPromoCard({
+    super.key,
+    required this.chain,
+    required this.lat,
+    required this.lng,
+    required this.radiusKm,
+  });
 
   @override
   Widget build(BuildContext context) {
+    // Sort items by discount percentage (highest first)
+    final sortedItems = List<PromoItem>.from(chain.items)..sort((a, b) => b.pctOff.compareTo(a.pctOff));
+
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: Padding(
@@ -119,8 +203,11 @@ class ChainPromoCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Chain header with store count badge
             Row(
               children: [
+                Icon(Icons.local_offer_rounded, color: Theme.of(context).colorScheme.primary, size: 20),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(chain.chainName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                 ),
@@ -132,7 +219,7 @@ class ChainPromoCard extends StatelessWidget {
                   ),
                   child: Text(
                     '${chain.nStores} магазина',
-                    style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.secondary),
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.secondary),
                   ),
                 ),
               ],
@@ -145,44 +232,68 @@ class ChainPromoCard extends StatelessWidget {
                   style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ),
-            const SizedBox(height: 4),
-            ...chain.items.map((item) => Padding(
-              padding: const EdgeInsets.only(bottom: 6),
+            const Divider(height: 16),
+            // Sorted promo items
+            ...sortedItems.map((item) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: Text(item.rawName, style: const TextStyle(fontSize: 13)),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(item.rawName, style: const TextStyle(fontSize: 13)),
+                        if (item.qty != null)
+                          Text(
+                            '${item.qty!['value'] ?? ''} ${item.qty!['unit'] ?? ''}',
+                            style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          ),
+                      ],
+                    ),
                   ),
-                  // Retail price (strikethrough)
-                  if (item.priceRetail > item.pricePromo)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: Text(
-                        '${item.priceRetail.toStringAsFixed(2)} €',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          decoration: TextDecoration.lineThrough,
+                  // Price column
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      // Retail price (strikethrough)
+                      if (item.priceRetail > item.pricePromo)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6, bottom: 2),
+                          child: Text(
+                            '${item.priceRetail.toStringAsFixed(2)} €',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              decoration: TextDecoration.lineThrough,
+                            ),
+                          ),
                         ),
+                      // Promo price
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '${item.pricePromo.toStringAsFixed(2)} €',
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.secondary),
+                          ),
+                          const SizedBox(width: 6),
+                          // Discount badge
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.redAccent.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '-${item.pctOff}%',
+                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.redAccent),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  // Promo price
-                  Text(
-                    '${item.pricePromo.toStringAsFixed(2)} €',
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(width: 6),
-                  // Discount badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.redAccent.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      '-${item.pctOff}%',
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.redAccent),
-                    ),
+                    ],
                   ),
                 ],
               ),
