@@ -19,43 +19,25 @@ import 'screens/home_screen.dart';
 import 'services/analytics.dart';
 
 /// Persistent theme mode provider that loads from SharedPreferences and
-/// notifies listeners when the user toggles between light / dark / system.
+/// notifies listeners when the user toggles between light / dark.
 class ThemeProvider extends ChangeNotifier {
   static ThemeProvider? instance;
-  ThemeMode _mode = ThemeMode.system;
+  bool _isDark = false;
 
-  ThemeMode get mode => _mode;
+  bool get isDark => _isDark;
 
   /// Load saved preference from disk (call once at startup).
   Future<void> load() async {
     final saved = await LocalStore.themeMode();
-    _mode = _fromString(saved);
+    _isDark = saved == 'dark';
     notifyListeners();
   }
 
-  /// Cycle: system → light → dark → system …
+  /// Toggle between light and dark.
   void toggle() {
-    if (_mode == ThemeMode.system) _mode = ThemeMode.light;
-    else if (_mode == ThemeMode.light) _mode = ThemeMode.dark;
-    else _mode = ThemeMode.system;
-    LocalStore.setThemeMode(_toString(_mode));
+    _isDark = !_isDark;
+    LocalStore.setThemeMode(_isDark ? 'dark' : 'light');
     notifyListeners();
-  }
-
-  static ThemeMode _fromString(String? v) {
-    switch (v) {
-      case 'light': return ThemeMode.light;
-      case 'dark': return ThemeMode.dark;
-      default: return ThemeMode.system;
-    }
-  }
-
-  static String? _toString(ThemeMode m) {
-    switch (m) {
-      case ThemeMode.light: return 'light';
-      case ThemeMode.dark: return 'dark';
-      case ThemeMode.system: return null;
-    }
   }
 }
 
@@ -84,12 +66,12 @@ class KolichkaApp extends StatefulWidget {
 }
 
 class _KolichkaAppState extends State<KolichkaApp> {
-  late ThemeMode _currentMode;
+  late bool _isDark;
 
   @override
   void initState() {
     super.initState();
-    _currentMode = widget.provider.mode;
+    _isDark = widget.provider.isDark;
     widget.provider.addListener(_onThemeChanged);
   }
 
@@ -102,7 +84,7 @@ class _KolichkaAppState extends State<KolichkaApp> {
   void _onThemeChanged() {
     if (mounted) {
       setState(() {
-        _currentMode = widget.provider.mode;
+        _isDark = widget.provider.isDark;
       });
     }
   }
@@ -114,7 +96,7 @@ class _KolichkaAppState extends State<KolichkaApp> {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
-      themeMode: _currentMode,
+      themeMode: _isDark ? ThemeMode.dark : ThemeMode.light,
       home: const HomeScreen(),
     );
   }
