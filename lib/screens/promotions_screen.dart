@@ -29,6 +29,7 @@ class _PromotionsScreenState extends State<PromotionsScreen> {
   String? _error;
   // Chain filter: empty means all chains shown
   final Set<String> _chainFilter = {};
+  String _query = '';
 
   @override
   void initState() {
@@ -67,16 +68,24 @@ class _PromotionsScreenState extends State<PromotionsScreen> {
   }
 
   List<PromoChain> get _filteredChains {
-    final chains = _result?.chains ?? [];
-    if (_chainFilter.isEmpty) return chains;
-    return chains.where((c) => _chainFilter.contains(c.chainSlug)).toList();
+    var chains = _result?.chains ?? [];
+    if (_chainFilter.isNotEmpty) {
+      chains = chains.where((c) => _chainFilter.contains(c.chainSlug)).toList();
+    }
+    final q = _query.trim().toLowerCase();
+    if (q.isNotEmpty) {
+      chains = chains
+          .where((c) => c.items.any((it) => it.rawName.toLowerCase().contains(q)))
+          .toList();
+    }
+    return chains;
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Промоции'),
+        title: const Text('🔥 Промоции', style: TextStyle(color: Color(0xFFD23B3B), fontWeight: FontWeight.w800)),
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
@@ -111,6 +120,45 @@ class _PromotionsScreenState extends State<PromotionsScreen> {
 
     return Column(
       children: [
+        // Red attention header + promo search
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                      color: const Color(0xFFD23B3B), borderRadius: BorderRadius.circular(6)),
+                  child: const Text('🔥 НАМАЛЕНИЯ',
+                      style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.3)),
+                ),
+                const SizedBox(width: 8),
+                Text('${result.count} оферти',
+                    style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              ]),
+              const SizedBox(height: 8),
+              TextField(
+                onChanged: (v) => setState(() => _query = v),
+                decoration: InputDecoration(
+                  hintText: 'Търси в промоциите…',
+                  prefixIcon: const Icon(Icons.search, color: Color(0xFFD23B3B)),
+                  isDense: true,
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFFD23B3B))),
+                  enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFFD23B3B))),
+                  focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFFD23B3B), width: 2)),
+                ),
+              ),
+            ],
+          ),
+        ),
         // Chain filter chips row
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -164,6 +212,7 @@ class _PromotionsScreenState extends State<PromotionsScreen> {
                       final chain = _filteredChains[index];
                       return ChainPromoCard(
                         chain: chain,
+                        query: _query,
                         lat: widget.lat,
                         lng: widget.lng,
                         radiusKm: widget.radiusKm,
@@ -179,6 +228,7 @@ class _PromotionsScreenState extends State<PromotionsScreen> {
 
 class ChainPromoCard extends StatelessWidget {
   final PromoChain chain;
+  final String query;
   final double lat;
   final double lng;
   final double radiusKm;
@@ -186,6 +236,7 @@ class ChainPromoCard extends StatelessWidget {
   const ChainPromoCard({
     super.key,
     required this.chain,
+    this.query = '',
     required this.lat,
     required this.lng,
     required this.radiusKm,
@@ -194,7 +245,11 @@ class ChainPromoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Sort items by discount percentage (highest first)
-    final sortedItems = List<PromoItem>.from(chain.items)..sort((a, b) => b.pctOff.compareTo(a.pctOff));
+    final q = query.trim().toLowerCase();
+    final baseItems = q.isEmpty
+        ? chain.items
+        : chain.items.where((it) => it.rawName.toLowerCase().contains(q)).toList();
+    final sortedItems = List<PromoItem>.from(baseItems)..sort((a, b) => b.pctOff.compareTo(a.pctOff));
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
