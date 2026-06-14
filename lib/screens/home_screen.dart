@@ -505,6 +505,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             // 3. Search bar
             KolichkaSearchBar(
               controller: _searchController,
+              suggestions: _categories,
               onSearch: (text) => _performSearch(text),
               onClear: () {
                 setState(() {
@@ -612,7 +613,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // GROUP ROW — always visible with all groups + Промоции button
+          Padding(
+            padding: const EdgeInsets.only(left: 2, bottom: 4),
+            child: Text('ГРУПИ',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.4,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          ),
           SizedBox(
             height: 30,
             child: ListView.builder(
@@ -647,7 +653,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 final idx = groups[i - 1].key;
                 final group = groups[i - 1].value;
                 final isExpanded = _openGroupIndex == idx;
-                final (iconData, iconColor) = _groupIconWithColor(group.label);
+                final (_, iconColor) = _groupIconWithColor(group.label);
                 return Padding(
                   padding: const EdgeInsets.only(right: 4),
                   child: InkWell(
@@ -664,7 +670,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         ),
                       ),
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(iconData, size: 14, color: iconColor),
+                        Text(group.emoji, style: const TextStyle(fontSize: 14)),
                         const SizedBox(width: 3),
                         Text(
                           group.label,
@@ -684,7 +690,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
           // SUBCATS — only visible when a group is selected (Web v2 behavior)
           if (subcatWidgets.isNotEmpty) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.only(left: 2, bottom: 4),
+              child: Text('КАТЕГОРИИ',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.4,
+                      color: Theme.of(context).colorScheme.primary)),
+            ),
             Wrap(
               spacing: 4,
               runSpacing: 3,
@@ -726,7 +738,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
           ),
           child: Text(
-            cat.label,
+            cat.emoji != null && cat.emoji!.isNotEmpty ? '${cat.emoji} ${cat.label}' : cat.label,
             style: TextStyle(
               fontSize: 11,
               fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
@@ -855,16 +867,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  /// Exact + approximate matches as one list, cheapest first. Loose results
+  /// are wrapped as single-chain MatchResults so they render identically.
+  List<MatchResult> _combinedResults(List<MatchResult> exact, List<LooseResult> loose) {
+    final extra = loose.map((l) {
+      final cp = ChainPrice(
+        chainSlug: l.chainSlug, chainName: l.chainName, minPrice: l.price,
+        priceRetail: l.priceRetail, snapshotDate: l.snapshotDate,
+      );
+      return MatchResult(
+        canonicalId: -1, display: l.rawName, qty: l.qty, nChains: 1,
+        cheapest: cp, chains: [cp],
+      );
+    }).toList();
+    final all = [...exact, ...extra];
+    all.sort((a, b) => a.cheapest.minPrice.compareTo(b.cheapest.minPrice));
+    return all;
+  }
+
   Widget _buildResults() {
     final result = _currentResult!;
     final matches = result.matches;
     final loose = result.loose.where((l) => l.price > 0).toList();
-    final chainsPresent = <String, String>{};
-    for (final m in matches) {
-      for (final c in m.chains) {
-        chainsPresent.putIfAbsent(c.chainSlug, () => c.chainName);
-      }
-    }
     final filtered = _chainFilter.isEmpty
         ? matches
         : matches
@@ -923,8 +947,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ),
         ),
 
-        if (chainsPresent.length > 1) _buildChainFilter(chainsPresent),
-
         if (filtered.isEmpty && _chainFilter.isNotEmpty)
           Padding(
             padding: EdgeInsets.all(20),
@@ -934,29 +956,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
           ),
 
-        // Exact match product cards (filtered by chain)
-        ...filtered.map((match) => _ProductCard(
+        // All results (exact + approximate) — cheapest first, same card style
+        ..._combinedResults(filtered, loose).map((match) => _ProductCard(
               match: match,
               isFav: _favorites.contains(match.display.trim().toLowerCase()),
               onAddToBasket: () => _addToBasket(match.display),
               onToggleFav: () => _toggleFav(match.display),
               onOpenMap: () => _openMap(productQuery: match.display),
             )),
-
-        // Loose matches section
-        if (loose.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            child: Text(
-              'Приблизителни съвпадения (${loose.length})',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurfaceVariant),
-            ),
-          ),
-          ...loose.map((looseMatch) => _LooseCard(
-              loose: looseMatch,
-              onOpenMap: () => _openMap(productQuery: looseMatch.rawName),
-            )),
-        ],
 
         const SizedBox(height: 16),
       ],
@@ -977,7 +984,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: 'Начало'),
           BottomNavigationBarItem(icon: Icon(Icons.local_offer_outlined), label: 'Промоции'),
-          BottomNavigationBarItem(icon: Icon(Icons.map_outlined), label: 'Карта'),
+          BottomNavigationBarItem(icon: Icon(Icons.settings_outlined), label: 'Настройки'),
         ],
         onTap: (idx) {
           switch (idx) {
@@ -987,7 +994,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               _openPromotions();
               break;
             case 2:
-              _openMap(); // no product — general store map
+              _openSettings();
               break;
           }
         },
