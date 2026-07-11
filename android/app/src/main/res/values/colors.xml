@@ -2,4 +2,5 @@
 <resources>
     <!-- Kolichka brand green matching iOS theme -->
     <color name="brand_green">#178A5E</color>
+	<color name="ic_launcher_background">#ffffff</color>
 </resources>

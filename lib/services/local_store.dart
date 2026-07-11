@@ -14,6 +14,66 @@ class LocalStore {
   static const _favKey = 'kolichka.favorites';
   static const _famKey = 'kolichka.fam.code';
   static const _themeModeKey = 'kolichka.theme.mode';
+  static const _subDoneKey = 'kolichka.sub.done';
+  static const _subPromptedKey = 'kolichka.sub.promptedAt';
+  static const _firstSeenKey = 'kolichka.firstSeenAt';
+  static const _launchCountKey = 'kolichka.launchCount';
+
+  // ---- App engagement (first-seen + session count) ----
+  /// Records the first-launch timestamp (once) and increments the launch
+  /// counter. Returns the new launch count. Call exactly once per app start.
+  static Future<int> bumpLaunch() async {
+    final p = await SharedPreferences.getInstance();
+    if ((p.getInt(_firstSeenKey) ?? 0) == 0) {
+      await p.setInt(_firstSeenKey, DateTime.now().millisecondsSinceEpoch);
+    }
+    final n = (p.getInt(_launchCountKey) ?? 0) + 1;
+    await p.setInt(_launchCountKey, n);
+    return n;
+  }
+
+  /// Epoch ms when the app was first opened (0 if never recorded yet).
+  static Future<int> firstSeenAt() async =>
+      (await SharedPreferences.getInstance()).getInt(_firstSeenKey) ?? 0;
+
+  /// Number of times the app has been launched.
+  static Future<int> launchCount() async =>
+      (await SharedPreferences.getInstance()).getInt(_launchCountKey) ?? 0;
+
+  // ---- Email-subscription nudge state ----
+  /// True once the user has submitted the subscribe form (don't nag again).
+  static Future<bool> subscribeDone() async =>
+      (await SharedPreferences.getInstance()).getBool(_subDoneKey) ?? false;
+  static Future<void> setSubscribeDone() async =>
+      (await SharedPreferences.getInstance()).setBool(_subDoneKey, true);
+  /// Epoch ms of the last auto-prompt (0 if never), for cool-down.
+  static Future<int> subscribePromptedAt() async =>
+      (await SharedPreferences.getInstance()).getInt(_subPromptedKey) ?? 0;
+  static Future<void> markSubscribePrompted(int epochMs) async =>
+      (await SharedPreferences.getInstance()).setInt(_subPromptedKey, epochMs);
+
+  // ---- Feedback / rating prompt (after positive engagement) ----
+  static const _feedbackDoneKey = 'kolichka.feedback.done';
+  static const _searchWinsKey = 'kolichka.search.wins';
+  /// True once the rating sheet has been auto-prompted (never auto-nag again).
+  static Future<bool> feedbackPromptDone() async =>
+      (await SharedPreferences.getInstance()).getBool(_feedbackDoneKey) ?? false;
+  static Future<void> setFeedbackPromptDone() async =>
+      (await SharedPreferences.getInstance()).setBool(_feedbackDoneKey, true);
+  /// Count of searches that returned results (a "good" experience). Returns new total.
+  static Future<int> bumpSearchWins() async {
+    final p = await SharedPreferences.getInstance();
+    final n = (p.getInt(_searchWinsKey) ?? 0) + 1;
+    await p.setInt(_searchWinsKey, n);
+    return n;
+  }
+
+  // ---- Daily favourite-promo push reminders ----
+  static const _notifyKey = 'kolichka.notify.favpromos';
+  static Future<bool> notifyEnabled() async =>
+      (await SharedPreferences.getInstance()).getBool(_notifyKey) ?? false;
+  static Future<void> setNotifyEnabled(bool v) async =>
+      (await SharedPreferences.getInstance()).setBool(_notifyKey, v);
 
   static Future<List<String>> _getList(String key) async {
     final p = await SharedPreferences.getInstance();

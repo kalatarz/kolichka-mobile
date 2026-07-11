@@ -17,6 +17,7 @@ import 'config.dart';
 import 'services/local_store.dart';
 import 'screens/home_screen.dart';
 import 'services/analytics.dart';
+import 'services/notify_service.dart';
 
 /// Persistent theme mode provider that loads from SharedPreferences and
 /// notifies listeners when the user toggles between light / dark.
@@ -53,6 +54,10 @@ void main() async {
   final provider = ThemeProvider();
   ThemeProvider.instance = provider;
   await provider.load();
+  // Track sessions so the email nudge can wait until the user is engaged.
+  await LocalStore.bumpLaunch();
+  // Re-arm the daily favourite-promo reminders if the user enabled them.
+  NotifyService.init().then((_) => NotifyService.rescheduleIfEnabled());
   runApp(KolichkaApp(provider: provider));
 }
 

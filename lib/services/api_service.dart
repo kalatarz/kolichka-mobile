@@ -88,10 +88,54 @@ class ApiService {
     return list.map((e) => Category.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  /// GET /api/iploc — approximate location from the client IP via server GeoIP
+  /// (MaxMind). Last-resort fallback when device GPS is off/denied. Returns null
+  /// if the server can't resolve the IP.
+  Future<GeocodeResult?> iploc() async {
+    try {
+      final body = await _get('/api/iploc');
+      final lat = (body['lat'] as num?)?.toDouble();
+      final lng = (body['lng'] as num?)?.toDouble();
+      if (lat == null || lng == null) return null;
+      return GeocodeResult(lat: lat, lng: lng, display: (body['label'] as String?) ?? 'твоят регион');
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// GET /api/geocode?q=...
   Future<List<GeocodeResult>> geocode(String query) async {
     final list = await _getList('/api/geocode', params: {'q': query});
     return list.map((e) => GeocodeResult.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Reverse-geocode coords → a human area name (suburb/city), in Bulgarian.
+  /// Mirrors the web v2 `reverseArea()` Nominatim call. Returns null on failure.
+  Future<String?> reverseArea(double lat, double lng) async {
+    final uri = Uri.parse('https://nominatim.openstreetmap.org/reverse').replace(
+      queryParameters: {
+        'format': 'json',
+        'zoom': '14',
+        'accept-language': 'bg',
+        'lat': _coord(lat),
+        'lon': _coord(lng),
+      },
+    );
+    try {
+      final res = await _client.get(uri, headers: {
+        'User-Agent': Config.userAgent,
+        'Accept': 'application/json',
+      }).timeout(const Duration(seconds: 8));
+      if (res.statusCode != 200) return null;
+      final j = jsonDecode(res.body) as Map<String, dynamic>;
+      final a = (j['address'] as Map<String, dynamic>?) ?? {};
+      for (final k in ['suburb', 'neighbourhood', 'city_district', 'quarter',
+                       'city', 'town', 'village', 'county']) {
+        final v = a[k];
+        if (v is String && v.trim().isNotEmpty) return v.trim();
+      }
+    } catch (_) {}
+    return null;
   }
 
   /// GET /api/stores/nearby?lat=&lng=&radius_km=

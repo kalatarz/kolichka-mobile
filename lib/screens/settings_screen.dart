@@ -6,6 +6,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../widgets/feedback_sheet.dart';
 import '../config.dart';
 import '../widgets/subscribe_sheet.dart';
+import '../services/notify_service.dart';
+import '../services/local_store.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -27,7 +29,7 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
           ListTile(
-            leading: Icon(Icons.shopping_cart, size: 24, color: Theme.of(context).colorScheme.primary),
+            leading: Image.asset('assets/icons/app_icon.png', width: 28, height: 28, filterQuality: FilterQuality.medium),
             title: const Text('Количка'),
             subtitle: const Text('Сравни цени на хранителни продукти около теб'),
           ),
@@ -67,16 +69,11 @@ class SettingsScreen extends StatelessWidget {
             subtitle: const Text('Получавай най-добрите цени около теб'),
             onTap: () => showSubscribeSheet(context),
           ),
+          const _NotifyToggleTile(),
           ListTile(
             leading: const Icon(Icons.star_rate_rounded, size: 24, color: Colors.amber),
-            title: const Text('Оцени приложението'),
-            subtitle: const Text('Дай оценка с 5 звезди'),
-            onTap: () => showRatingSheet(context),
-          ),
-          ListTile(
-            leading: const Icon(Icons.feedback_outlined, size: 20),
-            title: const Text('Обратна връзка'),
-            subtitle: const Text('Сподели мнение или докладвай проблем'),
+            title: const Text('Оцени и сподели мнение'),
+            subtitle: const Text('Дай оценка с 5 звезди или докладвай проблем'),
             onTap: () => showRatingSheet(context),
           ),
 
@@ -131,5 +128,61 @@ class SettingsScreen extends StatelessWidget {
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
+  }
+}
+
+/// Toggle for the daily favourite-promo push reminders (morning + evening).
+class _NotifyToggleTile extends StatefulWidget {
+  const _NotifyToggleTile();
+  @override
+  State<_NotifyToggleTile> createState() => _NotifyToggleTileState();
+}
+
+class _NotifyToggleTileState extends State<_NotifyToggleTile> {
+  bool _on = false;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    LocalStore.notifyEnabled().then((v) { if (mounted) setState(() => _on = v); });
+  }
+
+  Future<void> _toggle(bool v) async {
+    setState(() => _busy = true);
+    try {
+      if (v) {
+        final ok = await NotifyService.enableDailyReminders();
+        if (!mounted) return;
+        setState(() => _on = ok);
+        if (!ok) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Разреши известия от системните настройки, после опитай пак.')));
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Включено! Ще напомняме сутрин (7:30) и вечер (20:00).')));
+        }
+      } else {
+        await NotifyService.disable();
+        if (!mounted) return;
+        setState(() => _on = false);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _on = false);
+    } finally {
+      // Always clear the busy flag so the switch never gets stuck/disabled.
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SwitchListTile(
+      secondary: Icon(Icons.notifications_active_outlined, size: 22, color: Theme.of(context).colorScheme.primary),
+      title: const Text('Известия за намаления на любими'),
+      subtitle: const Text('Напомняне сутрин (7:30) и вечер (20:00)'),
+      value: _on,
+      onChanged: _busy ? null : _toggle,
+    );
   }
 }

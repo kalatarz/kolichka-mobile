@@ -4,8 +4,11 @@
 *.log
 *.pyc
 *.swp
+*.bak
 .buildlog/
 .history
+# Dev-only QA screenshot dumps (not release artifacts)
+.walkthrough/
 
 # IDE
 .idea/

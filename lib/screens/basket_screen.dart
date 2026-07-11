@@ -8,6 +8,7 @@ import '../services/local_store.dart';
 import '../services/analytics.dart';
 import 'package:share_plus/share_plus.dart';
 import '../services/external.dart';
+import '../widgets/item_emoji.dart';
 import 'map_screen.dart';
 
 class BasketScreen extends StatefulWidget {
@@ -40,6 +41,16 @@ class _BasketScreenState extends State<BasketScreen> {
   // Autocomplete for product suggestions
   List<String> _suggestions = [];
   bool _showSuggestions = false;
+  // Quick-pick popular items (shown when the add field is empty, or when the
+  // user taps + with nothing typed) so adding is one tap and obviously possible.
+  bool _showPopular = false;
+
+  /// Curated, clean staples for the one-tap quick-add slider.
+  static const _popularItems = <String>[
+    'Хляб', 'Мляко', 'Яйца', 'Сирене', 'Кашкавал', 'Кисело мляко',
+    'Краве масло', 'Олио', 'Ориз', 'Захар', 'Брашно', 'Пиле',
+    'Картофи', 'Домати', 'Банани', 'Кафе',
+  ];
 
   /// Common Bulgarian grocery items for autocomplete.
   static const _commonProducts = <String>[
@@ -257,7 +268,11 @@ class _BasketScreenState extends State<BasketScreen> {
     final text = (suggestion ?? _controller.text).trim();
     if (text.isEmpty) return;
     if (_items.any((e) => e.toLowerCase() == text.toLowerCase())) {
-      _controller.clear();
+      setState(() {
+        _controller.clear();
+        _suggestions = [];
+        _showSuggestions = false;
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('"$text" вече е в кошницата'), duration: const Duration(seconds: 1)),
@@ -268,6 +283,9 @@ class _BasketScreenState extends State<BasketScreen> {
     setState(() {
       _items.add(text);
       _controller.clear();
+      // Clear the autocomplete dropdown too (it used to linger after adding).
+      _suggestions = [];
+      _showSuggestions = false;
     });
     _persist();
     _famSync();
@@ -295,6 +313,8 @@ class _BasketScreenState extends State<BasketScreen> {
     if (!mounted) return;
     setState(() => _bought = bought.map((e) => e.trim().toLowerCase()).toSet());
     _famSync();
+    // If a comparison is on screen, refresh it so checked-off items drop out.
+    if (_result != null) _compare();
   }
 
   Future<void> _share() async {
@@ -308,14 +328,20 @@ class _BasketScreenState extends State<BasketScreen> {
   }
 
   Future<void> _compare() async {
-    if (_items.isEmpty) return;
+    // Only compare items still to buy — bought (checked-off) items must not
+    // appear in the store comparison anymore.
+    final active = _items.where((e) => !_bought.contains(e.trim().toLowerCase())).toList();
+    if (active.isEmpty) {
+      setState(() { _result = null; _error = null; _loading = false; });
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
       final result = await _api.basket(
-        items: _items,
+        items: active,
         lat: widget.lat,
         lng: widget.lng,
         radiusKm: widget.radiusKm,
@@ -395,12 +421,28 @@ class _BasketScreenState extends State<BasketScreen> {
                 Expanded(
                   child: TextField(
                     controller: _controller,
+                    textInputAction: TextInputAction.done,
                     decoration: InputDecoration(
                       hintText: 'Добави продукт (напр. хляб)',
+                      prefixIcon: Icon(Icons.search, size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant),
                       isDense: true,
-                      suffixIcon: _showSuggestions && _suggestions.isNotEmpty
-                          ? null
-                          : null,
+                      filled: true,
+                      fillColor: Theme.of(context).brightness == Brightness.dark
+                          ? Theme.of(context).colorScheme.surfaceContainerHighest
+                          : const Color(0xFFEEF1F5),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 1.5),
+                      ),
                     ),
                     onSubmitted: (_) => _addItem(),
                     onChanged: (text) {
@@ -421,12 +463,27 @@ class _BasketScreenState extends State<BasketScreen> {
                 ),
                 const SizedBox(width: 8),
                 FilledButton(onPressed: () {
-                  setState(() => _showSuggestions = false);
-                  _addItem();
+                  // With text → add it. Empty → reveal popular quick-picks
+                  // instead of doing nothing (clear "add something" affordance).
+                  if (_controller.text.trim().isEmpty) {
+                    setState(() {
+                      _showSuggestions = false;
+                      _showPopular = !_showPopular;
+                    });
+                  } else {
+                    setState(() => _showSuggestions = false);
+                    _addItem();
+                  }
                 }, child: const Icon(Icons.add)),
               ],
             ),
           ),
+          // Popular quick-add slider — shown when the field is empty and the
+          // user asked for ideas (tapped +), or whenever the basket is empty.
+          if (!_showSuggestions &&
+              _controller.text.trim().isEmpty &&
+              (_showPopular || _items.isEmpty))
+            _buildPopularStrip(),
           // Autocomplete suggestions dropdown
           if (_showSuggestions && _suggestions.isNotEmpty)
             Container(
@@ -485,6 +542,83 @@ class _BasketScreenState extends State<BasketScreen> {
     );
   }
 
+  /// One row in the empty-state personal/family explainer.
+  Widget _emptyOptionRow({
+    required IconData icon,
+    required String title,
+    required String body,
+    Widget? action,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(color: cs.primary.withOpacity(0.10), shape: BoxShape.circle),
+          child: Icon(icon, size: 18, color: cs.primary),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 2),
+              Text(body, style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+              if (action != null) action,
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Horizontal slider of popular staples — one tap adds to the basket.
+  Widget _buildPopularStrip() {
+    final cs = Theme.of(context).colorScheme;
+    final items = _popularItems
+        .where((p) => !_items.any((e) => e.toLowerCase() == p.toLowerCase()))
+        .toList();
+    if (items.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+          child: Row(
+            children: [
+              Icon(Icons.bolt, size: 14, color: cs.primary),
+              const SizedBox(width: 4),
+              Text('Популярни — докосни, за да добавиш',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant)),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 40,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            itemCount: items.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 6),
+            itemBuilder: (ctx, i) {
+              final name = items[i];
+              return ActionChip(
+                avatar: Text(itemEmoji(name), style: const TextStyle(fontSize: 15)),
+                label: Text(name, style: const TextStyle(fontSize: 13)),
+                shape: StadiumBorder(side: BorderSide(color: cs.primary.withOpacity(0.4))),
+                backgroundColor: cs.primary.withOpacity(0.06),
+                onPressed: () => _addItem(suggestion: name),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+
   Widget _buildCounter() {
     final bought =
         _items.where((e) => _bought.contains(e.trim().toLowerCase())).length;
@@ -504,12 +638,38 @@ class _BasketScreenState extends State<BasketScreen> {
 
   List<Widget> _buildChecklist() {
     if (_items.isEmpty) {
+      final cs = Theme.of(context).colorScheme;
       return [
         Padding(
-          padding: EdgeInsets.fromLTRB(24, 28, 24, 12),
-          child: Text(
-            'Добави продукти, които искаш да купиш. Отметни ги, щом ги вземеш.',
-            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Започни своята количка',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: cs.onSurface)),
+              const SizedBox(height: 4),
+              Text('Добави продукти, които искаш да купиш, после натисни „Сравни цени" и виж къде е най-евтино. Отметвай артикулите, щом ги вземеш.',
+                  style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+              const SizedBox(height: 16),
+              // Personal vs. family explainer.
+              _emptyOptionRow(
+                icon: Icons.person_outline,
+                title: 'Личен списък',
+                body: 'Само на това устройство. Идеален за бързо пазаруване сам.',
+              ),
+              const SizedBox(height: 10),
+              _emptyOptionRow(
+                icon: Icons.groups_outlined,
+                title: 'Семейна кошница',
+                body: 'Сподели един списък с близките си — всички виждат и редактират в реално време (отметки и премахвания се синхронизират).',
+                action: TextButton.icon(
+                  onPressed: _openFamDialog,
+                  icon: const Icon(Icons.group_add_outlined, size: 18),
+                  label: const Text('Създай или влез с код'),
+                  style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4), visualDensity: VisualDensity.compact),
+                ),
+              ),
+            ],
           ),
         ),
       ];
@@ -526,12 +686,21 @@ class _BasketScreenState extends State<BasketScreen> {
           activeColor: Theme.of(context).colorScheme.primary,
           onChanged: (_) => _toggleBought(item),
         ),
-        title: Text(
-          item,
-          style: TextStyle(
-            decoration: bought ? TextDecoration.lineThrough : null,
-            color: bought ? Theme.of(context).colorScheme.onSurfaceVariant : null,
-          ),
+        title: Row(
+          children: [
+            Text(itemEmoji(item), style: const TextStyle(fontSize: 18)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                item,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  decoration: bought ? TextDecoration.lineThrough : null,
+                  color: bought ? Theme.of(context).colorScheme.onSurfaceVariant : null,
+                ),
+              ),
+            ),
+          ],
         ),
         trailing: IconButton(
           icon: const Icon(Icons.close, size: 18),
@@ -583,11 +752,13 @@ class _BasketScreenState extends State<BasketScreen> {
                       style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
                     ),
                     const SizedBox(height: 8),
-                    ...result.mixedOptimal!.breakdown.map((item) => Padding(
+                    ...result.mixedOptimal!.breakdown.where((item) => item.price > 0).map((item) => Padding(
                       padding: const EdgeInsets.only(bottom: 4),
                       child: Row(
                         children: [
-                          Expanded(child: Text(item.query, style: const TextStyle(fontSize: 12))),
+                          Text(itemEmoji(item.query), style: const TextStyle(fontSize: 14)),
+                          const SizedBox(width: 6),
+                          Expanded(child: Text(item.query, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
                           Text(item.chainName, style: const TextStyle(fontSize: 12)),
                           const SizedBox(width: 8),
                           Text(
@@ -604,13 +775,30 @@ class _BasketScreenState extends State<BasketScreen> {
             const SizedBox(height: 12),
           ],
 
-          // Per-store results
-          Text(
-            'По магазин (${result.count})',
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-          ),
-          const SizedBox(height: 8),
-          ...result.stores.map((store) => _StoreCard(store: store)),
+          // Per-store results — only stores that actually carry at least one of
+          // the basket items (drop "0 €" / nothing-found stores).
+          ...(() {
+            final stores = result.stores
+                .where((s) => s.itemsFound > 0 && s.total > 0)
+                .toList();
+            return [
+              Text(
+                'По магазин (${stores.length})',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+              const SizedBox(height: 8),
+              if (stores.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Text(
+                    'Няма магазини с продукти от кошницата наблизо.',
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  ),
+                )
+              else
+                ...stores.map((store) => _StoreCard(store: store, radiusKm: widget.radiusKm)),
+            ];
+          })(),
           const SizedBox(height: 80),
         ],
       ),
@@ -620,8 +808,9 @@ class _BasketScreenState extends State<BasketScreen> {
 
 class _StoreCard extends StatelessWidget {
   final BasketStore store;
+  final double radiusKm;
 
-  const _StoreCard({required this.store});
+  const _StoreCard({required this.store, required this.radiusKm});
 
   @override
   Widget build(BuildContext context) {
@@ -635,7 +824,7 @@ class _StoreCard extends StatelessWidget {
               builder: (_) => MapScreen(
                 lat: store.lat,
                 lng: store.lng,
-                radiusKm: 3,
+                radiusKm: radiusKm,
                 articleStoreId: store.storeId,
                 articleLat: store.lat,
                 articleLng: store.lng,
@@ -696,16 +885,19 @@ class _StoreCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            ...store.breakdown.map((item) => Padding(
+            // Only items this store actually carries — skip not-found (0 €) rows.
+            ...store.breakdown.where((item) => item.price > 0).map((item) => Padding(
               padding: const EdgeInsets.only(bottom: 3),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  Text(itemEmoji(item.name ?? item.query), style: const TextStyle(fontSize: 14)),
+                  const SizedBox(width: 6),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(item.name ?? item.query, style: const TextStyle(fontSize: 12)),
+                        Text(item.name ?? item.query, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                         if (item.name != null)
                           Text(item.query, style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                       ],

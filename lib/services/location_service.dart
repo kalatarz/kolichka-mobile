@@ -41,11 +41,14 @@ class LocationService {
       throw const LocationException('Location services are disabled.');
     }
 
+    // Medium accuracy + 30s is far more reliable than high+60s, which often
+    // hangs on a cold GPS (indoors / just-enabled). Fall back to the last-known
+    // fix if the live request times out so we still return *something*.
     try {
       return await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 60),
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 30),
         ),
       );
     } catch (_) {

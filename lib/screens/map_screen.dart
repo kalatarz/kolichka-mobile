@@ -57,8 +57,10 @@ class _MapScreenState extends State<MapScreen> {
 
   Future<void> _load() async {
     try {
+      // Honor the user's selected radius (was previously clamped to a 5 km
+      // minimum, which made 1 km / 3 km show far more stores than chosen).
       final stores = await _api.getNearbyStores(widget.lat, widget.lng,
-          radiusKm: widget.radiusKm < 5 ? 5 : widget.radiusKm);
+          radiusKm: widget.radiusKm);
       if (!mounted) return;
       setState(() {
         _stores = stores;

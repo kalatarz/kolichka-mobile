@@ -11,6 +11,7 @@
 /// The map is accessible via a dedicated screen from settings/location panel.
 library;
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import '../config.dart';
@@ -20,6 +21,9 @@ import '../models/compare_result.dart';
 import '../services/api_service.dart';
 import '../services/location_service.dart';
 import '../services/local_store.dart';
+import '../services/notify_service.dart';
+import '../widgets/subscribe_sheet.dart';
+import '../widgets/feedback_sheet.dart';
 import '../services/analytics.dart';
 import '../main.dart';
 import '../widgets/brand_header.dart';
@@ -28,9 +32,9 @@ import '../widgets/search_bar.dart';
 import '../widgets/radius_segment.dart';
 import '../data/cat_groups.dart';
 import '../widgets/chain_colors.dart';
+import '../widgets/item_emoji.dart';
 import 'basket_screen.dart';
 import 'map_screen.dart';
-import 'promotions_screen.dart';
 import 'settings_screen.dart';
 import 'location_settings_screen.dart';
 
@@ -41,7 +45,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, WidgetsBindingObserver {
   final ApiService _api = ApiService();
   final LocationService _location = LocationService();
     final GlobalKey _resultsKey = GlobalKey();
@@ -54,6 +58,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   String? _locationLabel;
   bool _isLoading = true;
   bool _locationError = false;
+  bool _gpsFixed = false; // got a precise device-GPS fix (vs IP/saved fallback)
 
   // Search state
   double _radiusKm = Config.defaultRadiusKm;
@@ -68,7 +73,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _searching = false;
   String? _searchError;
   String? _lastQuery;
+  bool _promoMode = false; // current results are promotions (red label)
   final Set<String> _chainFilter = <String>{}; // selected chain slugs in results
+
+  // Bottom-nav tab: 0 = Начало (home), 1 = Промоции (dedicated promo browser).
+  int _tab = 0;
+  // Промоции tab state — its own promo list + live client-side text filter.
+  final TextEditingController _promoSearchController = TextEditingController();
+  List<MatchResult> _promoItems = [];
+  bool _promoTabLoading = false;
+  String? _promoTabError;
 
   // Stores count for display
   int _storesCount = 0;
@@ -79,19 +93,82 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   // Favorites (lowercased names) for quick lookup while rendering cards
   Set<String> _favorites = <String>{};
 
+  // Gently propose the email subscription — but only once the user is actually
+  // engaged: they've come back (≥2 sessions) AND used the app for a few hours
+  // total. Shown once per qualifying session after a short dwell, with a 7-day
+  // cool-down; never if already subscribed. Keeps brand-new users from being
+  // hit on their first screen and bouncing.
+  Timer? _subNudgeTimer;
+  static const int _subMinLaunches = 2;
+  static const int _subMinHoursSinceFirstSeen = 3;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _init();
     _refreshLocalState();
   }
 
+  /// Ask for a rating only after the user has had several *successful* searches
+  /// (≥4 with results) — engaged + getting value = the sweet spot. Shown once,
+  /// after a short delay so they see the results first; the rating sheet itself
+  /// routes 1–3★ to private feedback (no public 1-star).
+  Future<void> _maybePromptFeedback() async {
+    if (await LocalStore.feedbackPromptDone()) return;
+    final wins = await LocalStore.bumpSearchWins();
+    if (wins < 4) return;
+    await LocalStore.setFeedbackPromptDone();
+    await Future.delayed(const Duration(milliseconds: 1800));
+    if (!mounted) return;
+    Analytics.instance.track('feedback_prompt_shown', {'after_searches': wins});
+    showRatingSheet(context);
+  }
+
+  /// Schedule the one-shot email-subscription nudge after a dwell period.
+  void _scheduleSubscribeNudge() {
+    _subNudgeTimer?.cancel();
+    _subNudgeTimer = Timer(const Duration(seconds: 45), () async {
+      if (!mounted) return;
+      if (await LocalStore.subscribeDone()) return;
+      // Only nudge engaged users: returned at least once AND a few hours in.
+      final launches = await LocalStore.launchCount();
+      final firstSeen = await LocalStore.firstSeenAt();
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final hoursSinceFirstSeen =
+          firstSeen == 0 ? 0.0 : (now - firstSeen) / (60 * 60 * 1000);
+      if (launches < _subMinLaunches ||
+          hoursSinceFirstSeen < _subMinHoursSinceFirstSeen) {
+        return;
+      }
+      final last = await LocalStore.subscribePromptedAt();
+      const weekMs = 7 * 24 * 60 * 60 * 1000;
+      if (last != 0 && now - last < weekMs) return; // cool-down
+      if (!mounted) return;
+      await LocalStore.markSubscribePrompted(now);
+      Analytics.instance.track('subscribe_nudge_shown');
+      showSubscribeSheet(context);
+    });
+  }
+
   @override
   void dispose() {
+    _subNudgeTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _searchController.dispose();
+    _promoSearchController.dispose();
     _scrollController.dispose();
     _api.close();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // When the user comes back to the app — e.g. after switching GPS on in
+    // Android settings — retry device location if we never got a precise fix.
+    if (state == AppLifecycleState.resumed && !_gpsFixed) {
+      _upgradeLocation();
+    }
   }
 
   Future<void> _init() async {
@@ -101,9 +178,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       //    initial open never times out). Falls back to the Sofia default.
       final saved = await _location.getLastPosition();
       final savedAddress = await _location.getLastAddress();
+      // Restore the previously chosen search radius so 1/3/5/10 km persists
+      // across launches (and the Location screen opens with the right value).
+      _radiusKm = await _location.getRadius();
+      String? ipLabel;
       if (saved != null) {
         _lat = saved.latitude;
         _lng = saved.longitude;
+      } else {
+        // No saved location yet → approximate from the client IP (server GeoIP)
+        // so the app works even when device location is off. Precise GPS, if
+        // available, snaps over this in _upgradeLocation().
+        final ip = await _api.iploc();
+        if (ip != null) {
+          _lat = ip.lat;
+          _lng = ip.lng;
+          ipLabel = ip.display;
+        }
       }
 
       final results = await Future.wait([
@@ -115,11 +206,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _categories = results[0] as List<Category>;
         final stores = results[1] as List<Store>;
         _storesCount = stores.length;
-        _locationLabel = savedAddress ?? 'Моята локация';
+        _locationLabel = savedAddress ?? ipLabel ?? 'Моята локация';
         _isLoading = false;
         _locationError = false;
       });
       await _refreshLocalState();
+      // Auto-load nearby promotions on open (geo-based) so the home isn't empty.
+      if (_currentResult == null && !_searching) _openPromotions();
+      _scheduleSubscribeNudge();
       // 2) Background: get a precise GPS fix and snap the UI to it.
       _upgradeLocation();
     } catch (e) {
@@ -141,13 +235,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       setState(() {
         _lat = pos.latitude;
         _lng = pos.longitude;
-        _locationLabel = 'Моята локация';
+        _gpsFixed = true; // precise fix obtained → stop retrying on resume
       });
-      await _location.savePosition(pos, address: 'Моето местоположение');
+      // Reverse-geocode to a real area name (e.g. "Малинова долина", "Сандански")
+      // instead of a generic placeholder. Falls back to the existing label.
+      final area = await _api.reverseArea(pos.latitude, pos.longitude);
+      final label = (area != null && area.isNotEmpty)
+          ? area
+          : (_locationLabel ?? 'Моята локация');
+      if (mounted) setState(() => _locationLabel = label);
+      await _location.savePosition(pos, address: label);
       try {
         final stores = await _api.getNearbyStores(_lat, _lng, radiusKm: _radiusKm);
         if (mounted) setState(() => _storesCount = stores.length);
       } catch (_) {}
+      // If the home is still showing the auto-loaded promos (user hasn't
+      // searched), refresh them for the precise GPS location.
+      if (mounted && _promoMode) _openPromotions();
     } catch (_) {
       Analytics.instance.track('location_fail');
     }
@@ -160,8 +264,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     setState(() {
       _searching = true;
       _searchError = null;
+      _promoMode = false;
       _lastQuery = displayQuery ?? query;
-      _chainFilter.clear();
+      // NB: do NOT clear _chainFilter here — it is the persistent store filter
+      // chosen on the Location screen and must apply across searches.
     });
     Analytics.instance.track('search', {
       'kind': query.startsWith('cat:') ? 'category' : 'text',
@@ -179,10 +285,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _currentResult = result;
         _searching = false;
       });
+      final hits = result.matches.length + result.loose.length;
       Analytics.instance.track('saw_prices', {
-        'results': result.matches.length + result.loose.length,
+        'results': hits,
         'matches': result.matches.length,
       });
+      // Feedback "sweet spot": only after several searches that actually found
+      // prices (a good experience) do we ask for a rating — never on first use
+      // or on an empty result, so we don't provoke a frustrated low review.
+      if (hits > 0) _maybePromptFeedback();
 
       if (_resultsKey.currentContext != null) {
         Scrollable.ensureVisible(
@@ -240,20 +351,51 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ),
     );
     if (result != null && mounted) {
+      bool locationMoved = false;
       setState(() {
         if (result['radiusKm'] != null) {
           _radiusKm = result['radiusKm'];
         }
-        if (result['label'] != null) {
+        // Apply the picked coordinates so the chosen location actually takes
+        // effect (previously lat/lng were dropped, so picking a city did nothing).
+        if (result['lat'] != null && result['lng'] != null) {
+          final newLat = (result['lat'] as num).toDouble();
+          final newLng = (result['lng'] as num).toDouble();
+          if (newLat != _lat || newLng != _lng) locationMoved = true;
+          _lat = newLat;
+          _lng = newLng;
+        }
+        if (result['label'] != null && (result['label'] as String).isNotEmpty) {
           _locationLabel = result['label'];
         }
         if (result['selectedChains'] != null) {
-          _chainFilter.clear();
-          _chainFilter.addAll(result['selectedChains'] as Set<String>);
+          _chainFilter
+            ..clear()
+            ..addAll(result['selectedChains'] as Set<String>);
         }
       });
-      // Re-search with updated chain filter
-      if (_lastQuery != null) {
+      // Persist the chosen location so it survives app restarts.
+      if (locationMoved) {
+        await _location.savePosition(
+          Position(
+            latitude: _lat, longitude: _lng, timestamp: DateTime.now(),
+            accuracy: 0, altitude: 0, heading: 0, speed: 0,
+            speedAccuracy: 0, altitudeAccuracy: 0, headingAccuracy: 0,
+          ),
+          address: _locationLabel,
+        );
+        try {
+          final stores = await _api.getNearbyStores(_lat, _lng, radiusKm: _radiusKm);
+          if (mounted) setState(() => _storesCount = stores.length);
+        } catch (_) {}
+      }
+      // The Промоции tab's cached list is now stale for the new location.
+      _promoItems = [];
+      if (_tab == 1) _loadPromoTab(force: true);
+      // Re-run the current query with the updated location / radius / chain filter.
+      if (_promoMode) {
+        _openPromotions();
+      } else if (_lastQuery != null) {
         _performSearch(_lastQuery!, displayQuery: _lastQuery);
       }
     }
@@ -324,18 +466,196 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     await _refreshLocalState();
   }
 
-  /// Navigate to promotions screen.
-  void _openPromotions() {
+  /// Load promotions inline as regular product cards (no separate screen).
+  /// Promo offers from every nearby chain are flattened into synthetic
+  /// MatchResults, sorted by biggest discount first, and rendered through the
+  /// same _ProductCard pipeline as a normal search — so they can be added to
+  /// the basket / favourites and opened on the map like any other item.
+  /// Fetch nearby promotions and flatten them into MatchResult cards, biggest
+  /// discount first. Shared by the home auto-load and the Промоции tab.
+  Future<List<MatchResult>> _fetchPromoMatches() async {
+    final promos = await _api.promotions(lat: _lat, lng: _lng, radiusKm: _radiusKm);
+    final matches = <MatchResult>[];
+    for (final ch in promos.chains) {
+      for (final it in ch.items) {
+        final cp = ChainPrice(
+          chainSlug: ch.chainSlug,
+          chainName: ch.chainName,
+          minPrice: it.pricePromo,
+          priceRetail: it.priceRetail,
+          snapshotDate: it.snapshotDate ?? ch.latestSnapshot,
+          nStores: ch.nStores,
+        );
+        matches.add(MatchResult(
+          canonicalId: -1,
+          display: it.rawName,
+          qty: it.qty != null
+              ? Qty(
+                  value: (it.qty!['value'] as num?) ?? 0,
+                  unit: it.qty!['unit'] as String? ?? '')
+              : null,
+          nChains: 1,
+          cheapest: cp,
+          chains: [cp],
+        ));
+      }
+    }
+    matches.sort((a, b) => (b.cheapest.pctOff ?? 0).compareTo(a.cheapest.pctOff ?? 0));
+    return matches;
+  }
+
+  /// Home "Промоции" view (inline in the results area, red label).
+  Future<void> _openPromotions() async {
+    if (_lat == 0 && _lng == 0) return;
     Analytics.instance.track('open_promotions');
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (ctx) => PromotionsScreen(
-          lat: _lat,
-          lng: _lng,
-          radiusKm: _radiusKm,
+    setState(() {
+      _searching = true;
+      _searchError = null;
+      _promoMode = true;
+      _lastQuery = 'Промоции';
+      _selectedCategory = null;
+      _openGroupIndex = null;
+      _chainFilter.clear();
+    });
+    try {
+      final matches = await _fetchPromoMatches();
+      if (!mounted) return;
+      setState(() {
+        _currentResult = CompareResponse(
+            count: matches.length, matches: matches, loose: const []);
+        _searching = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _searchError = e.toString();
+        _searching = false;
+      });
+    }
+  }
+
+  /// Load (or reload) the dedicated Промоции tab's promo list.
+  Future<void> _loadPromoTab({bool force = false}) async {
+    if (_lat == 0 && _lng == 0) return;
+    if (_promoTabLoading) return;
+    if (_promoItems.isNotEmpty && !force) return;
+    setState(() {
+      _promoTabLoading = true;
+      _promoTabError = null;
+    });
+    try {
+      final matches = await _fetchPromoMatches();
+      if (!mounted) return;
+      setState(() {
+        _promoItems = matches;
+        _promoTabLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _promoTabError = e.toString();
+        _promoTabLoading = false;
+      });
+    }
+  }
+
+  /// Children of the Промоции tab: its own search bar + the filtered promo list.
+  List<Widget> _buildPromoTabChildren() {
+    return [
+      KolichkaSearchBar(
+        controller: _promoSearchController,
+        suggestions: const [], // no category suggestions here
+        hintText: 'Търси в промоциите…',
+        onSearch: (_) {}, // filtering is live (client-side) as the user types
+        onClear: () {},
+      ),
+      Expanded(
+        child: RefreshIndicator(
+          onRefresh: () => _loadPromoTab(force: true),
+          child: _buildPromoTabBody(),
         ),
       ),
+    ];
+  }
+
+  Widget _buildPromoTabBody() {
+    final cs = Theme.of(context).colorScheme;
+    if (_promoTabLoading && _promoItems.isEmpty) {
+      return ListView(children: [
+        Padding(
+          padding: const EdgeInsets.all(40),
+          child: Center(child: CircularProgressIndicator(color: cs.primary)),
+        ),
+      ]);
+    }
+    if (_promoTabError != null && _promoItems.isEmpty) {
+      return ListView(children: [
+        Padding(
+          padding: const EdgeInsets.all(32),
+          child: Center(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.wifi_off, size: 48, color: cs.onSurfaceVariant),
+              const SizedBox(height: 12),
+              const Text('Неуспешно зареждане на промоциите.',
+                  textAlign: TextAlign.center),
+              const SizedBox(height: 12),
+              ElevatedButton(
+                onPressed: () => _loadPromoTab(force: true),
+                child: const Text('Опитай отново'),
+              ),
+            ]),
+          ),
+        ),
+      ]);
+    }
+    // Live filter: rebuild ONLY this list as the user types (the search field
+    // itself is never rebuilt, so the keyboard stays put).
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: _promoSearchController,
+      builder: (context, value, _) {
+        final q = value.text.trim().toLowerCase();
+        final items = q.isEmpty
+            ? _promoItems
+            : _promoItems
+                .where((m) => m.display.toLowerCase().contains(q))
+                .toList();
+        return ListView.builder(
+          padding: const EdgeInsets.only(top: 8, bottom: 80),
+          itemCount: items.length + 1,
+          itemBuilder: (ctx, i) {
+            if (i == 0) {
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+                child: Row(children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                        color: const Color(0xFFD23B3B),
+                        borderRadius: BorderRadius.circular(6)),
+                    child: const Text('🔥 ПРОМОЦИИ',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.3)),
+                  ),
+                  const SizedBox(width: 8),
+                  Text('${items.length} оферти',
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                ]),
+              );
+            }
+            final match = items[i - 1];
+            return _ProductCard(
+              match: match,
+              isFav: _favorites.contains(match.display.trim().toLowerCase()),
+              onAddToBasket: () => _addToBasket(match.display),
+              onToggleFav: () => _toggleFav(match.display),
+              onOpenMap: () => _openMap(productQuery: match.display),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -491,7 +811,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 }
               },
               onFavorites: _openFavorites,
-              onSettings: _openSettings,
             ),
 
             // 2. Location chip
@@ -502,50 +821,55 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               onTap: _openLocationSettings,
             ),
 
-            // 3. Search bar
-            KolichkaSearchBar(
-              controller: _searchController,
-              suggestions: _categories,
-              onSearch: (text) => _performSearch(text),
-              onClear: () {
-                setState(() {
-                  _currentResult = null;
-                  _lastQuery = null;
-                  _selectedCategory = null;
-                  _openGroupIndex = null;
-                });
-              },
-            ),
+            // Tab 0 = Начало (home: search + categories + results/top promos).
+            // Tab 1 = Промоции (dedicated promo browser with its own search).
+            if (_tab == 0) ...[
+              // 3. Search bar
+              KolichkaSearchBar(
+                controller: _searchController,
+                suggestions: _categories,
+                onSearch: (text) => _performSearch(text),
+                onClear: () {
+                  setState(() {
+                    _currentResult = null;
+                    _lastQuery = null;
+                    _selectedCategory = null;
+                    _openGroupIndex = null;
+                  });
+                },
+              ),
 
-            // Scrollable content area
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: () async => _init(),
-                child: SingleChildScrollView(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.only(bottom: 80), // space for FAB
-                  child: Column(
-                    children: [
-                      // 4. Category groups
-                      _buildCategoryGroups(),
+              // Scrollable content area
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: () async => _init(),
+                  child: SingleChildScrollView(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.only(bottom: 80), // space for FAB
+                    child: Column(
+                      children: [
+                        // 4. Category groups
+                        _buildCategoryGroups(),
 
-                      // 5. Results area
-                      if (_searching)
-                        Padding(
-                          padding: EdgeInsets.all(24),
-                          child: Center(
-                            child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
-                          ),
-                        )
-                      else if (_searchError != null)
-                        _buildSearchError()
-                      else if (_currentResult != null)
-                        _buildResults(),
-                    ],
+                        // 5. Results area
+                        if (_searching)
+                          Padding(
+                            padding: EdgeInsets.all(24),
+                            child: Center(
+                              child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
+                            ),
+                          )
+                        else if (_searchError != null)
+                          _buildSearchError()
+                        else if (_currentResult != null)
+                          _buildResults(),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
+            ] else
+              ..._buildPromoTabChildren(),
           ],
         ),
       ),
@@ -627,6 +951,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               itemBuilder: (ctx, i) {
                 // First item is Промоции button (Web v2 parity)
                 if (i == 0) {
+                  // Highlight the Промоции chip while promotions are the active
+                  // view (mirrors the bottom-nav Промоции highlight).
+                  final promoActive = _promoMode;
                   return Padding(
                     padding: const EdgeInsets.only(right: 4),
                     child: InkWell(
@@ -635,14 +962,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: Colors.orange.withOpacity(0.12),
+                          color: Colors.orange.withOpacity(promoActive ? 0.22 : 0.12),
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: Colors.transparent, width: 1.2),
+                          border: Border.all(
+                            color: promoActive ? Colors.orange.shade700 : Colors.transparent,
+                            width: 1.2,
+                          ),
                         ),
-                        child: Row(mainAxisSize: MainAxisSize.min, children: const [
-                          Text('🏷️', style: TextStyle(fontSize: 13)),
-                          SizedBox(width: 3),
-                          Text('Промоции', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          const Text('🏷️', style: TextStyle(fontSize: 13)),
+                          const SizedBox(width: 3),
+                          Text('Промоции',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: promoActive ? FontWeight.w700 : FontWeight.w500,
+                                color: promoActive ? Colors.orange.shade900 : null,
+                              )),
                         ]),
                       ),
                     ),
@@ -869,6 +1204,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   /// Exact + approximate matches as one list, cheapest first. Loose results
   /// are wrapped as single-chain MatchResults so they render identically.
+  /// Restrict a match to the chains selected on the Location screen and
+  /// recompute its cheapest price among them. Returns null if none remain, so
+  /// the displayed price/chain reflects the user's store filter (not the
+  /// global cheapest chain they've excluded).
+  MatchResult? _projectToSelectedChains(MatchResult m) {
+    final kept = m.chains.where((c) => _chainFilter.contains(c.chainSlug)).toList();
+    if (kept.isEmpty) return null;
+    kept.sort((a, b) => a.minPrice.compareTo(b.minPrice));
+    return MatchResult(
+      canonicalId: m.canonicalId,
+      display: m.display,
+      qty: m.qty,
+      nChains: kept.length,
+      cheapest: kept.first,
+      chains: kept,
+      spread: m.spread,
+    );
+  }
+
   List<MatchResult> _combinedResults(List<MatchResult> exact, List<LooseResult> loose) {
     final extra = loose.map((l) {
       final cp = ChainPrice(
@@ -886,16 +1240,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildResults() {
+    final cs = Theme.of(context).colorScheme;
     final result = _currentResult!;
     final matches = result.matches;
-    final loose = result.loose.where((l) => l.price > 0).toList();
+    final allLoose = result.loose.where((l) => l.price > 0).toList();
+    // Apply the persistent store filter chosen on the Location screen to BOTH
+    // exact matches and loose results (empty set = show all chains).
     final filtered = _chainFilter.isEmpty
         ? matches
         : matches
-            .where((m) => m.chains.any((c) => _chainFilter.contains(c.chainSlug)))
+            .map(_projectToSelectedChains)
+            .whereType<MatchResult>()
             .toList();
+    final loose = _chainFilter.isEmpty
+        ? allLoose
+        : allLoose.where((l) => _chainFilter.contains(l.chainSlug)).toList();
 
-    if (matches.isEmpty && loose.isEmpty) {
+    if (filtered.isEmpty && loose.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(24),
         child: Center(
@@ -930,15 +1291,36 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Row(
             children: [
-              Text(
-                '${matches.length + loose.length} резултата за "${_lastQuery}"',
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-              ),
+              if (_promoMode) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                      color: const Color(0xFFD23B3B),
+                      borderRadius: BorderRadius.circular(6)),
+                  child: const Text('🔥 ПРОМОЦИИ',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.3)),
+                ),
+                const SizedBox(width: 8),
+                Text('${matches.length} оферти',
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              ] else
+                Text(
+                  '${filtered.length + loose.length} резултата за "${_lastQuery}"',
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                ),
               const Spacer(),
               IconButton(
                 icon: const Icon(Icons.refresh, size: 20),
                 onPressed: () {
-                  if (_lastQuery != null) _performSearch(_lastQuery!);
+                  if (_promoMode) {
+                    _openPromotions();
+                  } else if (_lastQuery != null) {
+                    _performSearch(_lastQuery!);
+                  }
                 },
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
@@ -946,6 +1328,36 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ],
           ),
         ),
+
+        // Promotions: offer email alerts for these deals.
+        if (_promoMode)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: InkWell(
+              onTap: () => showSubscribeSheet(context),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: cs.primary.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: cs.primary.withOpacity(0.35)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.mark_email_unread_outlined, size: 20, color: cs.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text('Получавай тези промоции по имейл, веднъж седмично',
+                          style: TextStyle(fontSize: 12.5, color: cs.onSurface)),
+                    ),
+                    Text('Абонирай се',
+                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: cs.primary)),
+                  ],
+                ),
+              ),
+            ),
+          ),
 
         if (filtered.isEmpty && _chainFilter.isNotEmpty)
           Padding(
@@ -981,17 +1393,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ),
       ),
       child: BottomNavigationBar(
+        // Reflect the active tab (Начало vs the dedicated Промоции browser).
+        currentIndex: _tab,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: 'Начало'),
           BottomNavigationBarItem(icon: Icon(Icons.local_offer_outlined), label: 'Промоции'),
           BottomNavigationBarItem(icon: Icon(Icons.settings_outlined), label: 'Настройки'),
         ],
         onTap: (idx) {
+          // Dismiss the keyboard when changing sections.
+          FocusScope.of(context).unfocus();
           switch (idx) {
-            case 0: // Already on home
+            case 0: // Switch to home (keeps its categories + top promos as-is).
+              if (_tab != 0) setState(() => _tab = 0);
               break;
-            case 1:
-              _openPromotions();
+            case 1: // Open the dedicated Промоции tab and load its promo list.
+              if (_tab != 1) setState(() => _tab = 1);
+              _loadPromoTab();
               break;
             case 2:
               _openSettings();
@@ -1388,8 +1806,17 @@ class _ProductCardState extends State<_ProductCard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(m.display,
-                          style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, height: 1.25, color: cs.onSurface)),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(itemEmoji(m.display), style: const TextStyle(fontSize: 16)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(m.display,
+                                style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, height: 1.25, color: cs.onSurface)),
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 4),
                       Wrap(
                         crossAxisAlignment: WrapCrossAlignment.center,
@@ -1514,6 +1941,38 @@ class _FavoritesSheetState extends State<_FavoritesSheet> {
                 const Spacer(),
                 TextButton(onPressed: () => Navigator.pop(context), child: const Text('Затвори')),
               ],
+            ),
+          ),
+          const Divider(height: 1),
+          // Push CTA — daily morning/evening reminders to check favourite promos.
+          InkWell(
+            onTap: () async {
+              final ok = await NotifyService.enableDailyReminders();
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(ok
+                    ? 'Готово! Ще ти напомняме сутрин и вечер за намаления на любимите.'
+                    : 'Разреши известия от настройките, за да получаваш напомняния.'),
+                duration: const Duration(seconds: 3),
+              ));
+              Navigator.pop(context);
+            },
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              color: Theme.of(context).colorScheme.primary.withOpacity(0.08),
+              child: Row(
+                children: [
+                  Icon(Icons.notifications_active_outlined, size: 20, color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text('Известия сутрин и вечер за намаления на любимите',
+                        style: TextStyle(fontSize: 12.5, color: Theme.of(context).colorScheme.onSurface)),
+                  ),
+                  Text('Включи',
+                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Theme.of(context).colorScheme.primary)),
+                ],
+              ),
             ),
           ),
           const Divider(height: 1),

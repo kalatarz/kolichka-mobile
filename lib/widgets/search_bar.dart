@@ -22,169 +22,242 @@ class KolichkaSearchBar extends StatefulWidget {
 
 class _KolichkaSearchBarState extends State<KolichkaSearchBar> {
   final FocusNode _focusNode = FocusNode();
-  bool _hasText = false;
+  final LayerLink _link = LayerLink();
+  OverlayEntry? _overlay;
 
   @override
   void initState() {
     super.initState();
-    widget.controller.addListener(_onTextChanged);
-    _focusNode.addListener(_onFocusChange);
+    // IMPORTANT: these listeners must NOT call setState(). Rebuilding the
+    // TextField subtree while the IME connection is being (re)established makes
+    // the keyboard "open then immediately hide" on some real Android devices.
+    // The focus border is driven by AnimatedBuilder(animation: _focusNode) and
+    // the clear button by ValueListenableBuilder on the controller, so the
+    // field element itself is never rebuilt by typing or focus changes — the
+    // listeners here only manage the floating suggestion overlay imperatively.
+    widget.controller.addListener(_syncOverlaySoon);
+    _focusNode.addListener(_syncOverlaySoon);
   }
 
   @override
   void dispose() {
-    widget.controller.removeListener(_onTextChanged);
-    _focusNode.removeListener(_onFocusChange);
+    _removeOverlay();
+    widget.controller.removeListener(_syncOverlaySoon);
+    _focusNode.removeListener(_syncOverlaySoon);
     _focusNode.dispose();
     super.dispose();
   }
 
-  void _onTextChanged() {
-    setState(() => _hasText = widget.controller.text.isNotEmpty);
-  }
-
-  void _onFocusChange() {
-    setState(() {});
+  void _syncOverlaySoon() {
+    // Defer overlay work until after the current build/layout pass.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncOverlay());
   }
 
   void _submit() {
     final text = widget.controller.text.trim();
-    if (text.isNotEmpty) {
-      widget.onSearch(text);
+    if (text.isNotEmpty) widget.onSearch(text);
+    _removeOverlay();
+  }
+
+  List<dynamic> get _filtered {
+    final q = widget.controller.text.toLowerCase();
+    if (q.isEmpty || widget.suggestions == null) return const [];
+    return widget.suggestions!.where((item) {
+      final label = item is String ? item : (item.label as String);
+      return label.toLowerCase().contains(q);
+    }).toList();
+  }
+
+  // ---- Floating overlay (renders above everything, incl. category chips) ----
+  void _syncOverlay() {
+    if (!mounted) return;
+    final show =
+        widget.controller.text.isNotEmpty && _focusNode.hasFocus && _filtered.isNotEmpty;
+    if (show) {
+      if (_overlay == null) {
+        _overlay = _buildOverlay();
+        Overlay.of(context).insert(_overlay!);
+      } else {
+        _overlay!.markNeedsBuild();
+      }
+    } else {
+      _removeOverlay();
     }
+  }
+
+  void _removeOverlay() {
+    _overlay?.remove();
+    _overlay = null;
+  }
+
+  OverlayEntry _buildOverlay() {
+    return OverlayEntry(
+      builder: (ctx) {
+        final items = _filtered;
+        final theme = Theme.of(context);
+        return Positioned(
+          width: _fieldWidth(),
+          child: CompositedTransformFollower(
+            link: _link,
+            showWhenUnlinked: false,
+            targetAnchor: Alignment.bottomLeft,
+            followerAnchor: Alignment.topLeft,
+            offset: const Offset(0, 6),
+            child: Material(
+              color: theme.scaffoldBackgroundColor,
+              elevation: 8,
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                constraints: const BoxConstraints(maxHeight: 300),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: theme.colorScheme.outlineVariant),
+                ),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: EdgeInsets.zero,
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (c, i) {
+                    final item = items[i];
+                    final isStr = item is String;
+                    final String text = isStr ? item : item.label;
+                    final String? emoji = isStr ? null : item.emoji;
+                    return ListTile(
+                      dense: true,
+                      leading: emoji != null
+                          ? Text(emoji, style: const TextStyle(fontSize: 20))
+                          : Icon(Icons.search, size: 20, color: theme.colorScheme.primary),
+                      title: Text(text),
+                      onTap: () {
+                        if (isStr) {
+                          widget.controller.text = item;
+                          widget.onSearch(item);
+                        } else {
+                          widget.onSearch('cat:${item.slug}');
+                          widget.controller.clear();
+                        }
+                        _focusNode.unfocus();
+                        _removeOverlay();
+                      },
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  double _fieldWidth() {
+    final box = context.findRenderObject() as RenderBox?;
+    // Root is Padding(horizontal:12); subtract it so the dropdown lines up
+    // with the input container, not the screen edges.
+    return (box?.size.width ?? MediaQuery.of(context).size.width) - 24;
   }
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              color: colorScheme.surface,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: colorScheme.primary, width: 2),
-              boxShadow: [
-                BoxShadow(
-                  color: colorScheme.primary.withOpacity(0.1),
-                  blurRadius: 20,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(left: 12),
-                  child: Icon(Icons.search, size: 22, color: colorScheme.primary),
-                ),
-                Expanded(
-                  child: TextField(
-                    controller: widget.controller,
-                    focusNode: _focusNode,
-                    textInputAction: TextInputAction.search,
-                    onSubmitted: (_) => _submit(),
-                    style: TextStyle(fontSize: 16, color: colorScheme.onSurface),
-                    decoration: InputDecoration(
-                      hintText: widget.hintText,
-                      hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
-                    ),
-                  ),
-                ),
-                if (_hasText)
-                  IconButton(
-                    icon: const Icon(Icons.close, size: 20, color: Colors.grey),
-                    onPressed: () {
-                      widget.controller.clear();
-                      widget.onClear?.call();
-                    },
-                  ),
-                Padding(
-                  padding: const EdgeInsets.all(4),
-                  child: ElevatedButton(
-                    onPressed: _submit,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: colorScheme.primary,
-                      foregroundColor: colorScheme.onPrimary,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-                    ),
-                    child: const Text('Търси', style: TextStyle(fontWeight: FontWeight.bold)),
-                  ),
-                ),
-                const SizedBox(width: 4),
-              ],
-            ),
-          ),
-          if (_hasText && widget.suggestions != null && _focusNode.hasFocus)
-            _buildSuggestionsOverlay(),
-        ],
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final fill = isDark ? cs.surfaceContainerHighest : const Color(0xFFEEF1F5);
+
+    // Build the TextField exactly once. It is handed to AnimatedBuilder as the
+    // reused `child`, so neither focus changes (border) nor typing (clear
+    // button) ever rebuild or replace this element — which is what keeps the
+    // soft keyboard from being torn down right after it opens.
+    final field = TextField(
+      controller: widget.controller,
+      focusNode: _focusNode,
+      textInputAction: TextInputAction.search,
+      onSubmitted: (_) => _submit(),
+      style: TextStyle(fontSize: 16, color: cs.onSurface),
+      decoration: InputDecoration(
+        hintText: widget.hintText,
+        hintStyle: TextStyle(color: cs.onSurfaceVariant, fontSize: 15),
+        filled: false,
+        border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        focusedBorder: InputBorder.none,
+        isCollapsed: true,
+        contentPadding: const EdgeInsets.symmetric(vertical: 14),
       ),
     );
-  }
 
-  Widget _buildSuggestionsOverlay() {
-    final query = widget.controller.text.toLowerCase();
-    final filteredSuggestions = widget.suggestions?.where((item) {
-      if (item is String) {
-        return item.toLowerCase().contains(query);
-      } else {
-        return item.label.toLowerCase().contains(query);
-      }
-    }).toList() ?? [];
-
-    if (filteredSuggestions.isEmpty) return const SizedBox.shrink();
-
-    return Positioned(
-      top: 55,
-      left: 12,
-      right: 12,
-      child: Material(
-        color: Theme.of(context).scaffoldBackgroundColor,
-        elevation: 8,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          constraints: const BoxConstraints(maxHeight: 300),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+    // The inner content (icon + field + clear + submit) is built once and
+    // reused; only the border decoration reacts to focus.
+    final content = Row(
+      children: [
+        const SizedBox(width: 14),
+        Icon(Icons.search, size: 22, color: cs.onSurfaceVariant),
+        const SizedBox(width: 8),
+        Expanded(child: field),
+        // Clear (×) — rebuilds in isolation when the text empties/fills.
+        ValueListenableBuilder<TextEditingValue>(
+          valueListenable: widget.controller,
+          builder: (context, value, _) {
+            if (value.text.isEmpty) return const SizedBox.shrink();
+            return InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () {
+                widget.controller.clear();
+                widget.onClear?.call();
+                _removeOverlay();
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(6),
+                child: Icon(Icons.close, size: 20, color: cs.onSurfaceVariant),
+              ),
+            );
+          },
+        ),
+        // Integrated green action button — circular, native-looking.
+        Padding(
+          padding: const EdgeInsets.all(5),
+          child: Material(
+            color: cs.primary,
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: _submit,
+              child: SizedBox(
+                width: 42, height: 42,
+                child: Icon(Icons.arrow_forward_rounded, color: cs.onPrimary, size: 22),
+              ),
+            ),
           ),
-          child: ListView.separated(
-            shrinkWrap: true,
-            padding: EdgeInsets.zero,
-            itemCount: filteredSuggestions.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
-            itemBuilder: (ctx, i) {
-              final item = filteredSuggestions[i];
-              String text = "";
-              if (item is String) {
-                text = item;
-              } else {
-                text = '${item.label}';
-              }
-              return ListTile(
-                leading: const Icon(Icons.category_outlined),
-                title: Text(text),
-                onTap: () {
-                  if (item is String) {
-                    widget.controller.text = item;
-                    widget.onSearch(item);
-                  } else {
-                    widget.onSearch('cat:${item.slug}');
-                    widget.controller.clear();
-                  }
-                  _submit();
-                  _focusNode.unfocus();
-                },
-              );
-            },
-          ),
+        ),
+      ],
+    );
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: CompositedTransformTarget(
+        link: _link,
+        child: AnimatedBuilder(
+          animation: _focusNode,
+          builder: (context, child) {
+            final focused = _focusNode.hasFocus;
+            return Material(
+              color: fill,
+              borderRadius: BorderRadius.circular(26),
+              clipBehavior: Clip.antiAlias,
+              child: Container(
+                height: 52,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(26),
+                  border: Border.all(
+                    color: focused ? cs.primary : Colors.transparent,
+                    width: 1.5,
+                  ),
+                ),
+                child: child,
+              ),
+            );
+          },
+          child: content,
         ),
       ),
     );

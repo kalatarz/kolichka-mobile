@@ -43,11 +43,17 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
   bool _isLoading = false;
   List<Store> _nearbyStores = [];
   Set<String> _selectedChains = {}; // chain slugs the user checked
+  // The coordinates the user has chosen on this screen (city search / GPS).
+  // Returned to HomeScreen so a picked location actually takes effect.
+  late double _chosenLat;
+  late double _chosenLng;
 
   @override
   void initState() {
     super.initState();
     _radius = widget.radiusKm;
+    _chosenLat = widget.lat;
+    _chosenLng = widget.lng;
     _cityController.text = widget.locationLabel ?? '';
     _selectedChains = Set.from(widget.selectedChains);
     _loadStores();
@@ -89,6 +95,8 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
         final r = results.first;
         setState(() {
           _cityController.text = r.display;
+          _chosenLat = r.lat;
+          _chosenLng = r.lng;
         });
         await _loadStores(lat: r.lat, lng: r.lng);
         await _location.savePosition(
@@ -117,27 +125,48 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
     setState(() => _isLoading = true);
     try {
       final pos = await _location.getCurrentPosition();
-      setState(() => _cityController.text = 'Моето местоположение');
+      setState(() {
+        _chosenLat = pos.latitude;
+        _chosenLng = pos.longitude;
+        _cityController.text = 'Моето местоположение';
+      });
       await _loadStores(lat: pos.latitude, lng: pos.longitude);
-      await _location.savePosition(pos, address: 'Моето местоположение');
-    } catch (e) {
-      if (mounted) {
+      // Reverse-geocode to a human area name (mirrors web v2).
+      final area = await _api.reverseArea(pos.latitude, pos.longitude);
+      if (area != null && area.isNotEmpty && mounted) {
+        setState(() => _cityController.text = area);
+      }
+      await _location.savePosition(pos, address: _cityController.text);
+    } catch (_) {
+      // Device GPS off/denied → fall back to approximate location from the
+      // client IP (server GeoIP / MaxMind) so the feature still works.
+      final ip = await _api.iploc();
+      if (ip != null && mounted) {
+        setState(() {
+          _chosenLat = ip.lat;
+          _chosenLng = ip.lng;
+          _cityController.text = ip.display;
+        });
+        await _loadStores(lat: ip.lat, lng: ip.lng);
+        await _location.savePosition(
+          Position(latitude: ip.lat, longitude: ip.lng, timestamp: DateTime.now(),
+            accuracy: 0, altitude: 0, heading: 0, speed: 0,
+            speedAccuracy: 0, altitudeAccuracy: 0, headingAccuracy: 0),
+          address: ip.display,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Приблизително местоположение (включи GPS за по-точно)')),
+          );
+        }
+      } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Грешка при местоположението: $e')),
+          const SnackBar(content: Text('Не успяхме да определим местоположение. Избери град ръчно.')),
         );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  void _saveAndReturn() {
-    _location.saveRadius(_radius);
-    Navigator.of(context).pop({
-      'radiusKm': _radius,
-      'label': _cityController.text.trim(),
-      'selectedChains': _selectedChains,
-    });
   }
 
   // ------------------------------------------------------------------ groups
@@ -154,20 +183,25 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surfaceColor = isDark ? const Color(0xFF1A1A2E) : Colors.white;
-    final cardBg = isDark ? Colors.white.withOpacity(0.04) : Colors.black.withOpacity(0.03);
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, res) {
+        if (didPop) return;
+        _location.saveRadius(_radius);
+        Navigator.of(context).pop({
+          'radiusKm': _radius,
+          'label': _cityController.text.trim(),
+          'selectedChains': _selectedChains,
+          'lat': _chosenLat,
+          'lng': _chosenLng,
+        });
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('Местоположение и магазини'),
         elevation: 0,
         scrolledUnderElevation: 0,
-        actions: [
-          TextButton(
-            onPressed: _saveAndReturn,
-            child: const Text('Запази', style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-        ],
       ),
       body: _isLoading && _nearbyStores.isEmpty
           ? const Center(child: CircularProgressIndicator())
@@ -180,34 +214,48 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
                       // ---- CITY / ADDRESS SEARCH ----
                       _sectionTitle('Град или адрес'),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        height: 52,
+                        padding: const EdgeInsets.only(left: 14, right: 4),
                         decoration: BoxDecoration(
-                          color: cardBg,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: isDark ? Colors.white12 : Colors.grey.shade200),
+                          color: isDark ? Theme.of(context).colorScheme.surfaceContainerHighest : const Color(0xFFEEF1F5),
+                          borderRadius: BorderRadius.circular(26),
                         ),
                         child: Row(children: [
-                          const Icon(Icons.search, size: 20, color: Colors.grey),
-                          const SizedBox(width: 6),
+                          Icon(Icons.search, size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          const SizedBox(width: 8),
                           Expanded(
                             child: TextField(
                               controller: _cityController,
-                              style: const TextStyle(fontSize: 14),
-                              decoration: const InputDecoration(
+                              textInputAction: TextInputAction.search,
+                              style: const TextStyle(fontSize: 15),
+                              decoration: InputDecoration(
                                 hintText: 'Напр. София, Пловдив...',
-                                hintStyle: TextStyle(fontSize: 14, color: Colors.grey),
-                                isDense: true,
+                                hintStyle: TextStyle(fontSize: 15, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                isCollapsed: true,
+                                filled: false,
                                 border: InputBorder.none,
-                                contentPadding: EdgeInsets.symmetric(vertical: 10),
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                contentPadding: const EdgeInsets.symmetric(vertical: 14),
                               ),
                               onSubmitted: (_) => _searchCity(),
                             ),
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.my_location, size: 20, color: Colors.grey),
-                            onPressed: _useMyLocation,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
+                          // "Use my location" — circular accent button (clear affordance).
+                          Padding(
+                            padding: const EdgeInsets.all(5),
+                            child: Material(
+                              color: Theme.of(context).colorScheme.primary,
+                              shape: const CircleBorder(),
+                              child: InkWell(
+                                customBorder: const CircleBorder(),
+                                onTap: _useMyLocation,
+                                child: SizedBox(
+                                  width: 42, height: 42,
+                                  child: Icon(Icons.my_location, size: 20, color: Theme.of(context).colorScheme.onPrimary),
+                                ),
+                              ),
+                            ),
                           ),
                         ]),
                       ),
@@ -263,6 +311,7 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
                 ),
               ],
             ),
+      ),
     );
   }
 
@@ -297,89 +346,70 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
 
   List<Widget> _buildChainCards() {
     final grouped = _groupedStores();
+    // Display the human chain NAME (e.g. "Билла"), not the slug ("billa_…").
+    String nameFor(MapEntry<String, List<Store>> e) =>
+        prettyChainName(e.value.isNotEmpty ? e.value.first.chainName : e.key);
     final sorted = grouped.entries.toList()
-      ..sort((a, b) => prettyChainName(a.key).compareTo(prettyChainName(b.key)));
+      ..sort((a, b) => nameFor(a).toLowerCase().compareTo(nameFor(b).toLowerCase()));
 
     return sorted.expand((entry) {
       final slug = entry.key;
       final stores = entry.value;
+      final chainName = nameFor(entry);
       final isChecked = _selectedChains.contains(slug);
       final cColor = chainColor(slug);
       final isDark = Theme.of(context).brightness == Brightness.dark;
 
       return [
-        // Chain card — tap to toggle
-        Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () {
-              setState(() {
-                if (isChecked) _selectedChains.remove(slug);
-                else _selectedChains.add(slug);
-              });
-            },
-            borderRadius: BorderRadius.circular(14),
-            child: Container(
-              margin: const EdgeInsets.only(bottom: 6),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                // Selected: chain color tint. Unselected: subtle grey tint.
-                color: isChecked
-                    ? cColor.withOpacity(isDark ? 0.12 : 0.08)
-                    : (isDark ? Colors.white.withOpacity(0.03) : Colors.black.withOpacity(0.02)),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
+        AnimatedOpacity(
+          opacity: isChecked ? 1.0 : 0.4,
+          duration: const Duration(milliseconds: 150),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () {
+                setState(() {
+                  if (isChecked) {
+                    _selectedChains.remove(slug);
+                  } else {
+                    _selectedChains.add(slug);
+                  }
+                });
+              },
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                decoration: BoxDecoration(
                   color: isChecked
-                      ? cColor.withOpacity(0.5)
-                      : (isDark ? Colors.white.withOpacity(0.06) : Colors.grey.shade200),
-                  width: isChecked ? 1.5 : 1,
+                      ? cColor.withOpacity(isDark ? 0.16 : 0.10)
+                      : (isDark ? Colors.white.withOpacity(0.04) : Colors.black.withOpacity(0.03)),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isChecked ? cColor : (isDark ? Colors.white12 : Colors.grey.shade300),
+                    width: isChecked ? 1.5 : 1,
+                  ),
                 ),
+                child: Row(children: [
+                  Container(
+                    width: 13, height: 13,
+                    decoration: BoxDecoration(color: cColor, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      chainName,
+                      style: TextStyle(
+                        fontWeight: isChecked ? FontWeight.w700 : FontWeight.w500,
+                        fontSize: 14,
+                        color: isChecked ? cColor : null,
+                      ),
+                    ),
+                  ),
+                  Text('${stores.length} обекта',
+                      style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                ]),
               ),
-              child: Row(children: [
-                // Colored indicator circle with checkmark
-                Container(
-                  width: 34, height: 34,
-                  decoration: BoxDecoration(
-                    color: isChecked ? cColor : cColor.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    isChecked ? Icons.check_rounded : null,
-                    size: 18,
-                    color: isChecked ? Colors.white : null,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        prettyChainName(slug),
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                          color: isChecked ? cColor : null,
-                        ),
-                      ),
-                      const SizedBox(height: 1),
-                      Text(
-                        '${stores.length} магазин${stores.length > 1 ? 'а' : ''}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // Subtle chevron indicator
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: 20,
-                  color: isChecked ? cColor : (isDark ? Colors.white24 : Colors.grey.shade400),
-                ),
-              ]),
             ),
           ),
         ),

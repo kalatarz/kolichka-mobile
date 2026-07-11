@@ -7,13 +7,11 @@ import 'package:flutter/material.dart';
 class BrandHeader extends StatelessWidget {
   final VoidCallback? onThemeToggle;
   final VoidCallback? onFavorites;
-  final VoidCallback? onSettings;
 
   const BrandHeader({
     super.key,
     this.onThemeToggle,
     this.onFavorites,
-    this.onSettings,
   });
 
   @override
@@ -29,27 +27,23 @@ class BrandHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Brand icon + name
-          InkWell(
-            onTap: onSettings,
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.shopping_cart, size: 22, color: Theme.of(context).colorScheme.primary),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Количка',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: isDark ? Theme.of(context).colorScheme.onSurface : Colors.black87,
-                    ),
+          // Brand icon + name (not tappable — settings live in the bottom nav)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Image.asset('assets/icons/app_icon.png', width: 26, height: 26, filterQuality: FilterQuality.medium),
+                const SizedBox(width: 6),
+                Text(
+                  'Количка',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? Theme.of(context).colorScheme.onSurface : Colors.black87,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
 
@@ -77,18 +71,6 @@ class BrandHeader extends StatelessWidget {
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
             ),
-
-          IconButton(
-            icon: Icon(
-              Icons.settings_outlined,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              size: 22,
-            ),
-            onPressed: onSettings,
-            tooltip: 'Настройки',
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-          ),
         ],
       ),
     );

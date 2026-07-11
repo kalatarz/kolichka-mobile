@@ -2,7 +2,7 @@ name: kolichka
 description: "Количка — сравни цени на хранителни продукти около теб"
 # Prevent accidental publishing to pub.dev.
 publish_to: 'none'
-version: 1.4.2+10
+version: 1.5.0+21
 
 environment:
   sdk: ^3.7.0
@@ -20,6 +20,8 @@ dependencies:
   in_app_review: ^2.0.9
   package_info_plus: ^8.0.2
   share_plus: ^10.1.1
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.9.4
 
 dev_dependencies:
   flutter_test:
@@ -29,8 +31,15 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/icons/app_icon.png
 flutter_launcher_icons:
   ios: true
   android: true
   image_path_ios: "assets/icons/app_icon.png"
   image_path_android: "assets/icons/app_icon.png"
+  # Adaptive icon (Android 8+): white circle background + the cart logo as
+  # foreground, so modern launchers render the new icon crisply too.
+  adaptive_icon_background: "#ffffff"
+  adaptive_icon_foreground: "assets/icons/app_icon.png"
+  remove_alpha_ios: true

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/location_service.dart';
 import '../services/analytics.dart';
+import '../services/local_store.dart';
 
 Future<void> showSubscribeSheet(BuildContext context) {
   return showModalBottomSheet<void>(
@@ -56,6 +57,7 @@ class _SubscribeSheetState extends State<_SubscribeSheet> {
       final pos = await _location.getLastPosition();
       await _api.subscribe(email: email, lat: pos?.latitude, lng: pos?.longitude);
       Analytics.instance.track('subscribe_email', {});
+      await LocalStore.setSubscribeDone(); // stop the browsing nudge from re-appearing
       if (!mounted) return;
       setState(() {
         _submitting = false;
