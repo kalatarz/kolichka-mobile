@@ -59,6 +59,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   bool _isLoading = true;
   bool _locationError = false;
   bool _gpsFixed = false; // got a precise device-GPS fix (vs IP/saved fallback)
+  bool _locating = false;  // re-entrancy guard: a location fetch is in flight
 
   // Search state
   double _radiusKm = Config.defaultRadiusKm;
@@ -164,10 +165,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // When the user comes back to the app — e.g. after switching GPS on in
-    // Android settings — retry device location if we never got a precise fix.
-    if (state == AppLifecycleState.resumed && !_gpsFixed) {
-      _upgradeLocation();
+    // When the user comes back to the app — e.g. after toggling GPS in Android
+    // settings — retry device location ONLY if we never got a precise fix.
+    // CRITICAL: check availability FIRST (permission granted + service on) and
+    // only then upgrade. Calling _upgradeLocation() unconditionally on every
+    // resume made getCurrentPosition() re-invoke requestPermission()/the GPS
+    // stack each time; with GPS off (or permission denied) that re-popped the
+    // system dialog on every return and could wedge the geolocator plugin,
+    // leaving the whole app unresponsive to taps. isLocationAvailable() never
+    // shows a dialog and returns false when GPS is off, so we simply skip.
+    if (state == AppLifecycleState.resumed && !_gpsFixed && !_locating) {
+      _location.isLocationAvailable().then((ok) {
+        if (ok && mounted && !_gpsFixed && !_locating) _upgradeLocation();
+      }).catchError((_) {});
     }
   }
 
@@ -228,7 +238,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   /// blocks startup; on permission-deny or timeout it silently keeps the
   /// last-known location.
   Future<void> _upgradeLocation() async {
+    if (_locating) return; // never run two location fetches at once
+    _locating = true;
     try {
+      // CRITICAL: never call getCurrentPosition() unless location is actually
+      // available. With GPS off, getCurrentPosition() makes Google Play Services
+      // pop its "Location off" warning activity OVER the app (confirmed via
+      // logcat: gms LocationOffWarningActivity) — on some devices it sits on top
+      // and blocks all taps. isLocationAvailable() only reads the service +
+      // permission state (never shows a dialog), so this is the safe gate. It
+      // guards BOTH the cold-start (_init) and resume callers.
+      if (!await _location.isLocationAvailable()) return;
       final pos = await _location.getCurrentPosition();
       if (!mounted) return;
       Analytics.instance.track('location_ok');
@@ -254,6 +274,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       if (mounted && _promoMode) _openPromotions();
     } catch (_) {
       Analytics.instance.track('location_fail');
+    } finally {
+      _locating = false;
     }
   }
 
