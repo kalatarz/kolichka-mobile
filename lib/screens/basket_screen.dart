@@ -397,7 +397,7 @@ class _BasketScreenState extends State<BasketScreen> {
             ),
         ],
       ),
-      body: Column(
+      body: SafeArea(top: false, child: Column(
         children: [
           if (_famCode != null)
             Container(
@@ -538,7 +538,7 @@ class _BasketScreenState extends State<BasketScreen> {
             ),
           ),
         ],
-      ),
+      )),
     );
   }
 

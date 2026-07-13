@@ -90,7 +90,7 @@ class _PromotionsScreenState extends State<PromotionsScreen> {
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
       ),
-      body: _loading
+      body: SafeArea(top: false, child: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(
@@ -106,7 +106,7 @@ class _PromotionsScreenState extends State<PromotionsScreen> {
                     ),
                   ),
                 )
-              : _buildContent(),
+              : _buildContent()),
     );
   }
 

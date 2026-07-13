@@ -18,7 +18,7 @@ class SettingsScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Настройки'),
       ),
-      body: ListView(
+      body: SafeArea(top: false, child: ListView(
         children: [
           // About section
           Padding(
@@ -119,7 +119,7 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
         ],
-      ),
+      )),
     );
   }
 

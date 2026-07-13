@@ -5,11 +5,13 @@
 /// badge rather than old-school checkboxes.
 library;
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import '../services/api_service.dart';
 import '../services/location_service.dart';
 import '../models/store.dart';
+import '../models/geocode_result.dart';
 import '../widgets/chain_colors.dart';
 import '../widgets/radius_segment.dart';
 
@@ -48,6 +50,11 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
   late double _chosenLat;
   late double _chosenLng;
 
+  // Address autocomplete: debounced as-you-type suggestions from /api/geocode.
+  Timer? _debounce;
+  List<GeocodeResult> _suggestions = [];
+  bool _suggestLoading = false;
+
   @override
   void initState() {
     super.initState();
@@ -61,6 +68,7 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _cityController.dispose();
     _api.close();
     super.dispose();
@@ -85,26 +93,64 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
     }
   }
 
+  // As-you-type: debounce 350ms, then fetch address suggestions. Keeps the
+  // Nominatim call rate low (server also caches + rate-limits /api/geocode).
+  void _onCityChanged(String value) {
+    _debounce?.cancel();
+    final q = value.trim();
+    if (q.length < 3) {
+      if (_suggestions.isNotEmpty) setState(() => _suggestions = []);
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 350), () async {
+      if (!mounted) return;
+      setState(() => _suggestLoading = true);
+      try {
+        final results = await _api.geocode(q);
+        if (!mounted) return;
+        setState(() { _suggestions = results.take(6).toList(); _suggestLoading = false; });
+      } catch (_) {
+        if (mounted) setState(() { _suggestions = []; _suggestLoading = false; });
+      }
+    });
+  }
+
+  // Apply a chosen geocode result (from a tapped suggestion or a submit).
+  Future<void> _applyResult(GeocodeResult r) async {
+    _debounce?.cancel();
+    setState(() {
+      _cityController.text = r.display;
+      _chosenLat = r.lat;
+      _chosenLng = r.lng;
+      _suggestions = [];
+      _isLoading = true;
+    });
+    FocusScope.of(context).unfocus();
+    try {
+      await _loadStores(lat: r.lat, lng: r.lng);
+      await _location.savePosition(
+        Position(latitude: r.lat, longitude: r.lng, timestamp: DateTime.now(),
+          accuracy: 0, altitude: 0, heading: 0, speed: 0,
+          speedAccuracy: 0, altitudeAccuracy: 0, headingAccuracy: 0),
+        address: r.display,
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // Submit (keyboard "search"): if suggestions are showing, take the first;
+  // otherwise geocode the raw text and apply the first hit.
   Future<void> _searchCity() async {
+    _debounce?.cancel();
+    if (_suggestions.isNotEmpty) { await _applyResult(_suggestions.first); return; }
     final query = _cityController.text.trim();
     if (query.isEmpty) return;
     setState(() => _isLoading = true);
     try {
       final results = await _api.geocode(query);
       if (results.isNotEmpty && mounted) {
-        final r = results.first;
-        setState(() {
-          _cityController.text = r.display;
-          _chosenLat = r.lat;
-          _chosenLng = r.lng;
-        });
-        await _loadStores(lat: r.lat, lng: r.lng);
-        await _location.savePosition(
-          Position(latitude: r.lat, longitude: r.lng, timestamp: DateTime.now(),
-            accuracy: 0, altitude: 0, heading: 0, speed: 0,
-            speedAccuracy: 0, altitudeAccuracy: 0, headingAccuracy: 0),
-          address: r.display,
-        );
+        await _applyResult(results.first);
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Не намерен адрес за "$query"')),
@@ -203,7 +249,7 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
       ),
-      body: _isLoading && _nearbyStores.isEmpty
+      body: SafeArea(top: false, child: _isLoading && _nearbyStores.isEmpty
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
@@ -238,6 +284,7 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
                                 focusedBorder: InputBorder.none,
                                 contentPadding: const EdgeInsets.symmetric(vertical: 14),
                               ),
+                              onChanged: _onCityChanged,
                               onSubmitted: (_) => _searchCity(),
                             ),
                           ),
@@ -259,6 +306,36 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
                           ),
                         ]),
                       ),
+
+                      // ---- ADDRESS SUGGESTIONS (autocomplete) ----
+                      if (_suggestLoading || _suggestions.isNotEmpty)
+                        Container(
+                          margin: const EdgeInsets.only(top: 6),
+                          decoration: BoxDecoration(
+                            color: isDark ? Theme.of(context).colorScheme.surfaceContainerHighest : Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                          ),
+                          child: _suggestLoading && _suggestions.isEmpty
+                              ? const Padding(
+                                  padding: EdgeInsets.all(14),
+                                  child: SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2)))
+                              : Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    for (int i = 0; i < _suggestions.length; i++) ...[
+                                      if (i > 0) const Divider(height: 1),
+                                      ListTile(
+                                        dense: true,
+                                        leading: Icon(Icons.place_outlined, size: 20, color: Theme.of(context).colorScheme.primary),
+                                        title: Text(_suggestions[i].display,
+                                            maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14)),
+                                        onTap: () => _applyResult(_suggestions[i]),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                        ),
 
                       const SizedBox(height: 16),
 
@@ -310,7 +387,7 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
                   ),
                 ),
               ],
-            ),
+            )),
       ),
     );
   }

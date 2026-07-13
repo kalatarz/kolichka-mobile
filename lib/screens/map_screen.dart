@@ -100,7 +100,7 @@ class _MapScreenState extends State<MapScreen> {
 
     return Scaffold(
       appBar: AppBar(title: Text('Магазини на картата (${shown.length})')),
-      body: Column(
+      body: SafeArea(top: false, child: Column(
         children: [
           if (legend.isNotEmpty) _buildLegend(legend),
           Expanded(
@@ -208,7 +208,7 @@ class _MapScreenState extends State<MapScreen> {
             ),
           ),
         ],
-      ),
+      )),
     );
   }
 
