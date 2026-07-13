@@ -110,32 +110,18 @@ class ApiService {
   }
 
   /// Reverse-geocode coords → a human area name (suburb/city), in Bulgarian.
-  /// Mirrors the web v2 `reverseArea()` Nominatim call. Returns null on failure.
+  /// Goes through OUR server (/api/reverse), which proxies Nominatim with caching +
+  /// a stable egress IP. Calling Nominatim directly from each device violated their
+  /// usage policy and got rate-limited (429) at scale, so the app fell back to the
+  /// generic "Моето местоположение" label. Returns null on failure.
   Future<String?> reverseArea(double lat, double lng) async {
-    final uri = Uri.parse('https://nominatim.openstreetmap.org/reverse').replace(
-      queryParameters: {
-        'format': 'json',
-        'zoom': '14',
-        'accept-language': 'bg',
-        'lat': _coord(lat),
-        'lon': _coord(lng),
-      },
-    );
     try {
-      final res = await _client.get(uri, headers: {
-        'User-Agent': Config.userAgent,
-        'Accept': 'application/json',
-      }).timeout(const Duration(seconds: 8));
-      if (res.statusCode != 200) return null;
-      final j = jsonDecode(res.body) as Map<String, dynamic>;
-      final a = (j['address'] as Map<String, dynamic>?) ?? {};
-      for (final k in ['suburb', 'neighbourhood', 'city_district', 'quarter',
-                       'city', 'town', 'village', 'county']) {
-        final v = a[k];
-        if (v is String && v.trim().isNotEmpty) return v.trim();
-      }
-    } catch (_) {}
-    return null;
+      final body = await _get('/api/reverse', params: {'lat': _coord(lat), 'lng': _coord(lng)});
+      final a = body['area'];
+      return (a is String && a.trim().isNotEmpty) ? a.trim() : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// GET /api/stores/nearby?lat=&lng=&radius_km=
