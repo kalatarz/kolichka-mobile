@@ -22,7 +22,7 @@ class Config {
   /// User-Agent sent on every API call so the platform can see app traffic
   /// + which version is visiting (grep server logs for 'KolichkaApp').
   static String get userAgent =>
-      'KolichkaApp/\$appVersion (Android; build \$appBuild)';
+      'KolichkaApp/$appVersion (Android; build $appBuild)';
 
   /// Base URL for the Kolichka API.
   /// In production this points to the public domain.
