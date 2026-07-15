@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/basket_result.dart';
 import '../services/api_service.dart';
 import '../services/local_store.dart';
@@ -10,6 +11,11 @@ import 'package:share_plus/share_plus.dart';
 import '../services/external.dart';
 import '../widgets/item_emoji.dart';
 import 'map_screen.dart';
+
+/// Thrown internally when a joined family code doesn't exist (404).
+class _FamNotFound implements Exception {
+  const _FamNotFound();
+}
 
 class BasketScreen extends StatefulWidget {
   final double lat;
@@ -138,10 +144,10 @@ class _BasketScreenState extends State<BasketScreen> {
         _bought = bought.map((e) => e.trim().toLowerCase()).toSet();
       });
       if (_items.isNotEmpty) _compare();
-    } catch (_) {
+    } catch (e) {
       if (!silent && mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Грешка при синхронизация')));
+            .showSnackBar(SnackBar(content: Text(friendlyError(e))));
       }
     }
   }
@@ -157,34 +163,31 @@ class _BasketScreenState extends State<BasketScreen> {
       setState(() => _famCode = code);
       _showFamCode(code);
       await _famLoad();
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Грешка при създаване')));
+            .showSnackBar(SnackBar(content: Text(friendlyError(e))));
       }
     }
   }
 
-  Future<void> _famJoin(String code) async {
-    try {
-      final data = await _api.famGet(code);
-      if (data == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(const SnackBar(content: Text('Няма такъв код')));
-        }
-        return;
-      }
-      await LocalStore.setFamCode(code);
-      _famCode = code;
-      Analytics.instance.track('fam_join');
-      await _famLoad();
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Грешка при присъединяване')));
-      }
-    }
+  /// Normalizes a family code the way the server does (lowercase, keep only
+  /// [a-z0-9]). The Bulgarian keyboard shares digits with Cyrillic letters, so
+  /// users often type stray characters (e.g. "442834и"); this keeps the stored
+  /// code clean and matching.
+  static String _normFamCode(String raw) =>
+      raw.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+
+  /// Joins an existing shared basket by [code]. Throws [_FamNotFound] if the
+  /// code does not exist, or an [ApiException] on network/server failures — the
+  /// caller (join dialog) surfaces these to the user.
+  Future<void> _joinWithCode(String code) async {
+    final data = await _api.famGet(code);
+    if (data == null) throw const _FamNotFound();
+    await LocalStore.setFamCode(code);
+    _famCode = code;
+    Analytics.instance.track('fam_join');
+    await _famLoad();
   }
 
   Future<void> _shareFamCode() async {
@@ -239,27 +242,73 @@ class _BasketScreenState extends State<BasketScreen> {
       return;
     }
     final joinCtrl = TextEditingController();
+    bool joining = false;
+    String? joinErr;
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Семейна кошница'),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Споделете един списък със семейството — отметки (купено) и премахвания се виждат на всички устройства.',
-              style: TextStyle(fontSize: 13)),
-          const SizedBox(height: 14),
-          SizedBox(width: double.infinity, child: FilledButton.icon(
-            onPressed: () { Navigator.pop(ctx); _famCreate(); },
-            icon: const Icon(Icons.add), label: const Text('Създай нова'))),
-          const SizedBox(height: 12),
-          Text('или въведи код:', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-          const SizedBox(height: 6),
-          Row(children: [
-            Expanded(child: TextField(controller: joinCtrl,
-                decoration: const InputDecoration(hintText: 'код', isDense: true, border: OutlineInputBorder()))),
-            const SizedBox(width: 8),
-            FilledButton(onPressed: () { final c = joinCtrl.text.trim(); Navigator.pop(ctx); if (c.isNotEmpty) _famJoin(c); }, child: const Text('Влез')),
-          ]),
-        ]),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          Future<void> doJoin() async {
+            final code = _normFamCode(joinCtrl.text);
+            if (code.isEmpty) {
+              setLocal(() => joinErr = 'Въведи код, за да се присъединиш.');
+              return;
+            }
+            setLocal(() { joining = true; joinErr = null; });
+            try {
+              await _joinWithCode(code);
+              if (ctx.mounted) Navigator.pop(ctx);
+            } on _FamNotFound {
+              setLocal(() { joining = false; joinErr = 'Няма кошница с код „$code“. Провери кода и опитай пак.'; });
+            } catch (e) {
+              setLocal(() { joining = false; joinErr = friendlyError(e); });
+            }
+          }
+
+          return AlertDialog(
+            title: const Text('Семейна кошница'),
+            content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Споделете един списък със семейството — отметки (купено) и премахвания се виждат на всички устройства.',
+                  style: TextStyle(fontSize: 13)),
+              const SizedBox(height: 14),
+              SizedBox(width: double.infinity, child: FilledButton.icon(
+                onPressed: joining ? null : () { Navigator.pop(ctx); _famCreate(); },
+                icon: const Icon(Icons.add), label: const Text('Създай нова'))),
+              const SizedBox(height: 12),
+              Text('или въведи код:', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              const SizedBox(height: 6),
+              Row(children: [
+                Expanded(child: TextField(
+                    controller: joinCtrl,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    enabled: !joining,
+                    textInputAction: TextInputAction.go,
+                    inputFormatters: [
+                      LengthLimitingTextInputFormatter(16),
+                      FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
+                    ],
+                    onSubmitted: (_) => joining ? null : doJoin(),
+                    decoration: const InputDecoration(hintText: 'код', isDense: true, border: OutlineInputBorder()))),
+                const SizedBox(width: 8),
+                FilledButton(
+                    onPressed: joining ? null : doJoin,
+                    child: joining
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Text('Влез')),
+              ]),
+              if (joinErr != null) ...[
+                const SizedBox(height: 10),
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Icon(Icons.error_outline, size: 18, color: Theme.of(ctx).colorScheme.error),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text(joinErr!,
+                      style: TextStyle(fontSize: 12.5, color: Theme.of(ctx).colorScheme.error))),
+                ]),
+              ],
+            ]),
+          );
+        },
       ),
     );
   }
@@ -356,7 +405,7 @@ class _BasketScreenState extends State<BasketScreen> {
       });
     } catch (e) {
       setState(() {
-        _error = e.toString();
+        _error = friendlyError(e);
         _loading = false;
       });
     }

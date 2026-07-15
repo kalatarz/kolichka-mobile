@@ -67,7 +67,7 @@ class _SubscribeSheetState extends State<_SubscribeSheet> {
       if (!mounted) return;
       setState(() {
         _submitting = false;
-        _error = 'Възникна грешка. Опитай отново.';
+        _error = friendlyError(e);
       });
     }
   }

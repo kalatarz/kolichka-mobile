@@ -51,7 +51,7 @@ class _PromotionsScreenState extends State<PromotionsScreen> {
       });
     } catch (e) {
       setState(() {
-        _error = e.toString();
+        _error = friendlyError(e);
         _loading = false;
       });
     }

@@ -326,7 +326,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       }
     } catch (e) {
       setState(() {
-        _searchError = e.toString();
+        _searchError = friendlyError(e);
         _searching = false;
       });
     }
@@ -550,7 +550,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _searchError = e.toString();
+        _searchError = friendlyError(e);
         _searching = false;
       });
     }
@@ -575,7 +575,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _promoTabError = e.toString();
+        _promoTabError = friendlyError(e);
         _promoTabLoading = false;
       });
     }
@@ -1512,7 +1512,7 @@ class _LocationFilterSheetState extends State<_LocationFilterSheet> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Грешка при определяне на местоположението: $e')),
+          SnackBar(content: Text(friendlyError(e))),
         );
       }
     }
@@ -1669,15 +1669,20 @@ class _LocationFilterSheetState extends State<_LocationFilterSheet> {
     if (query.isEmpty) return;
     try {
       final results = await _api.geocode(query);
-      if (results.isNotEmpty && mounted) {
-        final r = results.first;
-        widget.onLocationChanged(r.display, r.lat, r.lng);
-        Navigator.pop(context);
+      if (!mounted) return;
+      if (results.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Няма намерен адрес за „$query“. Опитай с град или улица.')),
+        );
+        return;
       }
+      final r = results.first;
+      widget.onLocationChanged(r.display, r.lat, r.lng);
+      Navigator.pop(context);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Не намерен адрес: $e')),
+          SnackBar(content: Text(friendlyError(e))),
         );
       }
     }

@@ -159,7 +159,7 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Грешка при търсенето: $e')),
+          SnackBar(content: Text(friendlyError(e))),
         );
       }
     } finally {

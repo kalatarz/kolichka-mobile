@@ -4,6 +4,7 @@
 /// This service handles request building, error parsing, and retry logic.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../config.dart';
@@ -14,15 +15,63 @@ import '../models/compare_result.dart';
 import '../models/basket_result.dart';
 import '../models/promotion_result.dart';
 
+/// Broad category of an API failure, so callers can show a specific,
+/// user-friendly message (see [friendlyError]) instead of a raw exception.
+enum ApiErrorKind {
+  network, // offline / DNS / connection refused
+  timeout, // request took too long
+  notFound, // 404
+  rateLimited, // 429
+  server, // 5xx
+  badResponse, // unexpected status / invalid JSON
+  unknown,
+}
+
 /// Exceptions thrown by [ApiService].
 class ApiException implements Exception {
   final String message;
   final int? statusCode;
+  final ApiErrorKind kind;
 
-  const ApiException(this.message, {this.statusCode});
+  const ApiException(this.message, {this.statusCode, this.kind = ApiErrorKind.unknown});
 
   @override
-  String toString() => 'ApiException[$statusCode]: $message';
+  String toString() => 'ApiException[$statusCode/${kind.name}]: $message';
+}
+
+/// Maps any thrown error to a short Bulgarian message safe to show a user.
+/// Callers should render this rather than `e.toString()` (which leaks English
+/// internals like "SocketException" / "ApiException[500]").
+String friendlyError(Object e) {
+  if (e is ApiException) {
+    switch (e.kind) {
+      case ApiErrorKind.network:
+        return 'Няма връзка с интернет. Провери мрежата и опитай пак.';
+      case ApiErrorKind.timeout:
+        return 'Сървърът не отговори навреме. Опитай пак.';
+      case ApiErrorKind.rateLimited:
+        return 'Твърде много заявки. Изчакай малко и опитай пак.';
+      case ApiErrorKind.server:
+        return 'Проблем със сървъра. Опитай пак по-късно.';
+      case ApiErrorKind.notFound:
+        return 'Не е намерено.';
+      case ApiErrorKind.badResponse:
+        return 'Неочакван отговор от сървъра. Опитай пак.';
+      case ApiErrorKind.unknown:
+        return 'Възникна грешка. Опитай пак.';
+    }
+  }
+  if (e is TimeoutException) return 'Сървърът не отговори навреме. Опитай пак.';
+  return 'Няма връзка с интернет. Провери мрежата и опитай пак.';
+}
+
+/// Classifies a low-level (non-HTTP-status) failure — a thrown timeout vs. any
+/// other connectivity error — into a typed [ApiException].
+ApiException _netError(Object e) {
+  if (e is TimeoutException) {
+    return const ApiException('Request timed out', kind: ApiErrorKind.timeout);
+  }
+  return ApiException('Network error: $e', kind: ApiErrorKind.network);
 }
 
 class ApiService {
@@ -36,22 +85,25 @@ class ApiService {
     try {
       final response = await _client.get(uri, headers: {'User-Agent': Config.userAgent}).timeout(const Duration(seconds: 30));
       if (response.statusCode >= 500) {
-        throw ApiException('Server error (${response.statusCode})', statusCode: response.statusCode);
+        throw ApiException('Server error (${response.statusCode})',
+            statusCode: response.statusCode, kind: ApiErrorKind.server);
       }
       if (response.statusCode == 429) {
-        throw const ApiException('Rate limited. Please wait and try again.');
+        throw const ApiException('Rate limited. Please wait and try again.',
+            statusCode: 429, kind: ApiErrorKind.rateLimited);
       }
       if (response.statusCode != 200) {
-        throw ApiException('Unexpected status ${response.statusCode}');
+        throw ApiException('Unexpected status ${response.statusCode}',
+            statusCode: response.statusCode, kind: ApiErrorKind.badResponse);
       }
       if (response.body.isEmpty) return {};
       final decoded = jsonDecode(response.body);
       if (decoded is Map<String, dynamic>) return decoded;
-      throw ApiException('Invalid JSON response');
+      throw const ApiException('Invalid JSON response', kind: ApiErrorKind.badResponse);
     } on ApiException {
       rethrow;
     } catch (e) {
-      throw ApiException('Network error: $e');
+      throw _netError(e);
     }
   }
 
@@ -61,22 +113,25 @@ class ApiService {
     try {
       final response = await _client.get(uri, headers: {'User-Agent': Config.userAgent}).timeout(const Duration(seconds: 30));
       if (response.statusCode >= 500) {
-        throw ApiException('Server error (${response.statusCode})', statusCode: response.statusCode);
+        throw ApiException('Server error (${response.statusCode})',
+            statusCode: response.statusCode, kind: ApiErrorKind.server);
       }
       if (response.statusCode == 429) {
-        throw const ApiException('Rate limited. Please wait and try again.');
+        throw const ApiException('Rate limited. Please wait and try again.',
+            statusCode: 429, kind: ApiErrorKind.rateLimited);
       }
       if (response.statusCode != 200) {
-        throw ApiException('Unexpected status ${response.statusCode}');
+        throw ApiException('Unexpected status ${response.statusCode}',
+            statusCode: response.statusCode, kind: ApiErrorKind.badResponse);
       }
       if (response.body.isEmpty) return [];
       final decoded = jsonDecode(response.body);
       if (decoded is List) return decoded;
-      throw ApiException('Invalid JSON response');
+      throw const ApiException('Invalid JSON response', kind: ApiErrorKind.badResponse);
     } on ApiException {
       rethrow;
     } catch (e) {
-      throw ApiException('Network error: $e');
+      throw _netError(e);
     }
   }
 
@@ -249,12 +304,12 @@ class ApiService {
         body: jsonEncode(body),
       ).timeout(const Duration(seconds: 15));
       if (response.statusCode != 200 && response.statusCode != 201) {
-        throw ApiException('Feedback submission failed (${response.statusCode})');
+        _throwForStatus(response.statusCode, 'Feedback submission failed');
       }
     } on ApiException {
       rethrow;
     } catch (e) {
-      throw ApiException('Failed to submit feedback: $e');
+      throw _netError(e);
     }
   }
 
@@ -262,34 +317,64 @@ class ApiService {
   /// [{'n': name, 'b': bought}].
   Future<Map<String, dynamic>> famCreate(List<Map<String, dynamic>> items) async {
     final uri = Uri.parse('${Config.apiBaseUrl}/api/fambasket');
-    final resp = await _client
-        .post(uri,
-            headers: {'Content-Type': 'application/json', 'User-Agent': Config.userAgent},
-            body: jsonEncode({'items': items}))
-        .timeout(const Duration(seconds: 15));
-    if (resp.statusCode != 200) throw ApiException('Create failed (${resp.statusCode})');
-    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    try {
+      final resp = await _client
+          .post(uri,
+              headers: {'Content-Type': 'application/json', 'User-Agent': Config.userAgent},
+              body: jsonEncode({'items': items}))
+          .timeout(const Duration(seconds: 15));
+      _throwForStatus(resp.statusCode, 'Create failed');
+      return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw _netError(e);
+    }
   }
 
-  /// Returns null if the code does not exist.
+  /// Returns null if the code does not exist (404).
   Future<Map<String, dynamic>?> famGet(String code) async {
     final uri = Uri.parse('${Config.apiBaseUrl}/api/fambasket/$code');
-    final resp = await _client
-        .get(uri, headers: {'User-Agent': Config.userAgent})
-        .timeout(const Duration(seconds: 15));
-    if (resp.statusCode == 404) return null;
-    if (resp.statusCode != 200) throw ApiException('Get failed (${resp.statusCode})');
-    return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    try {
+      final resp = await _client
+          .get(uri, headers: {'User-Agent': Config.userAgent})
+          .timeout(const Duration(seconds: 15));
+      if (resp.statusCode == 404) return null;
+      _throwForStatus(resp.statusCode, 'Get failed');
+      return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw _netError(e);
+    }
   }
 
   Future<void> famPut(String code, List<Map<String, dynamic>> items) async {
     final uri = Uri.parse('${Config.apiBaseUrl}/api/fambasket/$code');
-    final resp = await _client
-        .put(uri,
-            headers: {'Content-Type': 'application/json', 'User-Agent': Config.userAgent},
-            body: jsonEncode({'items': items}))
-        .timeout(const Duration(seconds: 15));
-    if (resp.statusCode != 200) throw ApiException('Sync failed (${resp.statusCode})');
+    try {
+      final resp = await _client
+          .put(uri,
+              headers: {'Content-Type': 'application/json', 'User-Agent': Config.userAgent},
+              body: jsonEncode({'items': items}))
+          .timeout(const Duration(seconds: 15));
+      _throwForStatus(resp.statusCode, 'Sync failed');
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw _netError(e);
+    }
+  }
+
+  /// Throws a typed [ApiException] for a non-200 status (no-op on 200).
+  void _throwForStatus(int status, String label) {
+    if (status == 200) return;
+    if (status >= 500) {
+      throw ApiException('$label ($status)', statusCode: status, kind: ApiErrorKind.server);
+    }
+    if (status == 429) {
+      throw ApiException('$label ($status)', statusCode: status, kind: ApiErrorKind.rateLimited);
+    }
+    throw ApiException('$label ($status)', statusCode: status, kind: ApiErrorKind.badResponse);
   }
 
   /// POST /api/subscribe — weekly-offers email (server sends a confirm mail).
