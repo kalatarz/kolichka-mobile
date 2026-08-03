@@ -6,6 +6,8 @@ import '../models/compare_result.dart';
 import "../services/api_service.dart";
 import "../services/local_store.dart";
 import "../services/external.dart";
+import "../services/foodbase_service.dart";
+import "../widgets/nutrition_sheet.dart";
 
 class SearchResultsScreen extends StatefulWidget {
   final String query;
@@ -188,6 +190,12 @@ class MatchCard extends StatelessWidget {
                       match.qty!.toString(),
                       style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.secondary),
                     ),
+                  ),
+                if (FoodbaseService.enabled)
+                  IconButton(
+                    icon: const Icon(Icons.eco_outlined, color: Color(0xFF2E9E6B), size: 20),
+                    tooltip: 'Хранителни стойности',
+                    onPressed: () => showNutritionSheet(context, match.display),
                   ),
                 IconButton(
                   icon: const Icon(Icons.add_shopping_cart, color: Colors.green, size: 20),

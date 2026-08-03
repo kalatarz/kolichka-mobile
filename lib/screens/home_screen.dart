@@ -21,6 +21,8 @@ import '../models/compare_result.dart';
 import '../services/api_service.dart';
 import '../services/location_service.dart';
 import '../services/local_store.dart';
+import '../services/foodbase_service.dart';
+import '../widgets/nutrition_sheet.dart';
 import '../services/notify_service.dart';
 import '../widgets/subscribe_sheet.dart';
 import '../widgets/feedback_sheet.dart';
@@ -1867,6 +1869,9 @@ class _ProductCardState extends State<_ProductCard> {
                     ],
                   ),
                 ),
+                if (FoodbaseService.enabled)
+                  _iconBtn(Icons.eco_outlined, const Color(0xFF2E9E6B),
+                      () => showNutritionSheet(context, m.display), '\u0425\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u043d\u0438 \u0441\u0442\u043e\u0439\u043d\u043e\u0441\u0442\u0438'),
                 _iconBtn(widget.isFav ? Icons.favorite : Icons.favorite_border,
                     widget.isFav ? Colors.redAccent : cs.onSurfaceVariant, widget.onToggleFav, '\u041b\u044e\u0431\u0438\u043c\u0438'),
                 _iconBtn(Icons.add_shopping_cart, cs.primary, widget.onAddToBasket, '\u0414\u043e\u0431\u0430\u0432\u0438 \u0432 \u043a\u043e\u0448\u043d\u0438\u0446\u0430\u0442\u0430'),
