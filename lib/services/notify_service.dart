@@ -9,6 +9,7 @@
 /// FCM upgrade; the reminder itself is reliable on-device.)
 library;
 
+import 'dart:io' show Platform;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest_all.dart' as tzdata;
@@ -40,6 +41,13 @@ class NotifyService {
     } catch (_) {/* falls back to UTC */}
     const settings = InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      // iOS: don't request at init — we ask explicitly in requestPermission()
+      // so the toggle can react to the user's allow/deny choice.
+      iOS: DarwinInitializationSettings(
+        requestAlertPermission: false,
+        requestBadgePermission: false,
+        requestSoundPermission: false,
+      ),
     );
     await _plugin.initialize(settings);
     await _plugin
@@ -48,9 +56,19 @@ class NotifyService {
     _ready = true;
   }
 
-  /// Ask for the runtime notification permission (Android 13+). Returns granted.
+  /// Ask for the runtime notification permission (Android 13+ / iOS). Granted?
   static Future<bool> requestPermission() async {
     await init();
+    // iOS: must explicitly request alert/badge/sound — otherwise the system
+    // dialog never appears and no notifications are ever delivered.
+    if (Platform.isIOS) {
+      final ios = _plugin
+          .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>();
+      if (ios == null) return true;
+      final granted =
+          await ios.requestPermissions(alert: true, badge: true, sound: true);
+      return granted ?? false;
+    }
     final android = _plugin
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
     if (android == null) return true; // non-Android platform
@@ -76,6 +94,9 @@ class NotifyService {
       'fav_promos', 'Промоции на любими',
       channelDescription: 'Намаления на любими продукти',
       importance: Importance.high, priority: Priority.high,
+    ),
+    iOS: DarwinNotificationDetails(
+      presentAlert: true, presentBadge: true, presentSound: true,
     ),
   );
 

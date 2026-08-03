@@ -58,9 +58,24 @@ class AppTheme {
         cardTheme: CardTheme(
           color: darkCard,
           elevation: 0,
+          surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: const BorderSide(color: darkLine),
+            borderRadius: BorderRadius.circular(14),
+            side: BorderSide(color: Colors.white.withValues(alpha: 0.06)),
+          ),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            elevation: 2,
+            shadowColor: primaryGreen.withValues(alpha: 0.5),
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: primaryGreen,
+            foregroundColor: Colors.white,
+            elevation: 2,
+            shadowColor: primaryGreen.withValues(alpha: 0.5),
           ),
         ),
         appBarTheme: const AppBarTheme(
@@ -114,10 +129,26 @@ class AppTheme {
         ),
         cardTheme: CardTheme(
           color: lightCard,
-          elevation: 1,
+          elevation: 2,
+          surfaceTintColor: Colors.transparent,
+          shadowColor: Colors.black.withValues(alpha: 0.10),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: const BorderSide(color: lightLine),
+            borderRadius: BorderRadius.circular(14),
+            side: BorderSide(color: Colors.black.withValues(alpha: 0.04)),
+          ),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            elevation: 2,
+            shadowColor: primaryGreen.withValues(alpha: 0.45),
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: primaryGreen,
+            foregroundColor: Colors.white,
+            elevation: 2,
+            shadowColor: primaryGreen.withValues(alpha: 0.45),
           ),
         ),
         appBarTheme: const AppBarTheme(

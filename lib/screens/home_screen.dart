@@ -717,7 +717,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
 
   /// Add a product to the persistent basket.
   Future<void> _addToBasket(String name) async {
-    final added = await LocalStore.addToBasket(name);
+    final added = await LocalStore.addToBasketSynced(name);
     Analytics.instance.track('add_to_basket', {'new': added});
     await _refreshLocalState();
     if (!mounted) return;
@@ -1811,13 +1811,19 @@ class _ProductCardState extends State<_ProductCard> {
       margin: const EdgeInsets.fromLTRB(12, 5, 12, 5),
       decoration: BoxDecoration(
         color: cs.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cs.outlineVariant),
+        borderRadius: BorderRadius.circular(14),
+        // Gentle hairline overlay (web-v3 look) instead of a hard framed border:
+        // a faint white overlay in dark, faint black in light — separation comes
+        // from the soft shadow, not a heavy outline.
+        border: Border.all(
+          color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
+          width: 0.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 3),
+            color: Colors.black.withValues(alpha: isDark ? 0.22 : 0.07),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -1987,17 +1993,47 @@ class _FavoritesSheetState extends State<_FavoritesSheet> {
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              color: Theme.of(context).colorScheme.primary.withOpacity(0.08),
+              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Icon(Icons.notifications_active_outlined, size: 20, color: Theme.of(context).colorScheme.primary),
-                  const SizedBox(width: 8),
+                  Icon(Icons.notifications_active_outlined,
+                      size: 22, color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 10),
                   Expanded(
-                    child: Text('Известия сутрин и вечер за намаления на любимите',
-                        style: TextStyle(fontSize: 12.5, color: Theme.of(context).colorScheme.onSurface)),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Напомняния за намаления',
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: Theme.of(context).colorScheme.onSurface)),
+                        const SizedBox(height: 2),
+                        Text('Сутрин и вечер за любимите ти продукти',
+                            style: TextStyle(
+                                fontSize: 11.5,
+                                color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                      ],
+                    ),
                   ),
-                  Text('Включи',
-                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Theme.of(context).colorScheme.primary)),
+                  const SizedBox(width: 10),
+                  // Compact action pill — never grows past its own content.
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                      child: Text('Включи',
+                          style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white)),
+                    ),
+                  ),
                 ],
               ),
             ),

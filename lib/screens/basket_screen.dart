@@ -193,7 +193,7 @@ class _BasketScreenState extends State<BasketScreen> {
   Future<void> _shareFamCode() async {
     final code = _famCode;
     if (code == null) return;
-    await Share.share(
+    await _doShare(
         'Присъедини се към семейната ни количка с код: $code\nИзтегли Количка: https://kolichka.gotvach.com',
         subject: 'Семейна количка');
   }
@@ -266,6 +266,7 @@ class _BasketScreenState extends State<BasketScreen> {
           }
 
           return AlertDialog(
+            scrollable: true,
             title: const Text('Семейна кошница'),
             content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
               const Text('Споделете един списък със семейството — отметки (купено) и премахвания се виждат на всички устройства.',
@@ -280,6 +281,7 @@ class _BasketScreenState extends State<BasketScreen> {
               Row(children: [
                 Expanded(child: TextField(
                     controller: joinCtrl,
+                    autofocus: true,
                     autocorrect: false,
                     enableSuggestions: false,
                     enabled: !joining,
@@ -366,12 +368,31 @@ class _BasketScreenState extends State<BasketScreen> {
     if (_result != null) _compare();
   }
 
+  /// Present the native share sheet. Uses the current share_plus API with a
+  /// [sharePositionOrigin] (required on iPad, harmless on iPhone) and surfaces
+  /// failures — the old bare `Share.share` silently did nothing on iOS.
+  Future<void> _doShare(String text, {String? subject}) async {
+    try {
+      final box = context.findRenderObject() as RenderBox?;
+      final origin = (box != null && box.hasSize)
+          ? box.localToGlobal(Offset.zero) & box.size
+          : null;
+      await Share.share(text, subject: subject, sharePositionOrigin: origin);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Споделянето не бе успешно: ${friendlyError(e)}')),
+        );
+      }
+    }
+  }
+
   Future<void> _share() async {
     if (_items.isEmpty) return;
     final lines = _items.map((e) => '\u2022 $e').join('\n');
     final url =
         'https://kolichka.gotvach.com/?b=${Uri.encodeComponent(_items.join(','))}';
-    await Share.share('\u041c\u043e\u044f\u0442\u0430 \u043a\u043e\u043b\u0438\u0447\u043a\u0430:\n$lines\n\n\u0421\u0440\u0430\u0432\u043d\u0438 \u0446\u0435\u043d\u0438: $url',
+    await _doShare('\u041c\u043e\u044f\u0442\u0430 \u043a\u043e\u043b\u0438\u0447\u043a\u0430:\n$lines\n\n\u0421\u0440\u0430\u0432\u043d\u0438 \u0446\u0435\u043d\u0438: $url',
         subject: 'Моята количка в Количка');
     Analytics.instance.track('share_basket', {'items': _items.length});
   }

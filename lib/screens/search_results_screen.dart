@@ -192,7 +192,7 @@ class MatchCard extends StatelessWidget {
                 IconButton(
                   icon: const Icon(Icons.add_shopping_cart, color: Colors.green, size: 20),
                   onPressed: () async {
-                    await LocalStore.addToBasket(match.display);
+                    await LocalStore.addToBasketSynced(match.display);
                   },
                 ),
               ],
@@ -365,7 +365,7 @@ class LooseCard extends StatelessWidget {
             IconButton(
               icon: const Icon(Icons.add_shopping_cart, color: Colors.green, size: 20),
               onPressed: () async {
-                await LocalStore.addToBasket(loose.rawName);
+                await LocalStore.addToBasketSynced(loose.rawName);
               },
             ),
             Column(

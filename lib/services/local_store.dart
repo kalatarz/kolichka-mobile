@@ -5,6 +5,7 @@
 library;
 
 import 'package:shared_preferences/shared_preferences.dart';
+import 'api_service.dart';
 
 class LocalStore {
   LocalStore._();
@@ -106,6 +107,34 @@ class LocalStore {
     list.add(t);
     await _setList(_basketKey, list);
     return true;
+  }
+
+  /// Adds [item] locally AND, if a shared family basket is joined, pushes the
+  /// updated list to the server so it syncs across devices. Without this, items
+  /// added from search never reached the joined shared basket (the basket
+  /// screen pulls the server copy and overwrote the un-synced local add).
+  /// Returns true if the item was newly added.
+  static Future<bool> addToBasketSynced(String item) async {
+    final added = await addToBasket(item);
+    final code = await famCode();
+    if (code != null) {
+      final api = ApiService();
+      try {
+        final names = await _getList(_basketKey);
+        final bought = (await _getList(_boughtKey))
+            .map((e) => e.trim().toLowerCase())
+            .toSet();
+        final items = names
+            .map((n) => {'n': n, 'b': bought.contains(n.trim().toLowerCase())})
+            .toList();
+        await api.famPut(code, items);
+      } catch (_) {
+        // offline — local kept, resyncs on next basket-screen edit
+      } finally {
+        api.close();
+      }
+    }
+    return added;
   }
 
   static Future<void> removeFromBasket(String item) async {

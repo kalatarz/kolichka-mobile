@@ -8,6 +8,7 @@
 ///             actionable feedback rather than a public 1-star review.
 library;
 
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:in_app_review/in_app_review.dart';
 import '../services/api_service.dart';
@@ -53,7 +54,7 @@ class _RatingSheetState extends State<_RatingSheet> {
         category: 'app-rating',
         rating: _rating,
         comment: comment.isEmpty ? null : comment,
-        context: {'platform': 'android', 'source': 'rating-sheet'},
+        context: {'platform': Platform.isIOS ? 'ios' : 'android', 'source': 'rating-sheet'},
       );
     } catch (_) {
       // Still thank the user even if the network call fails.
@@ -182,7 +183,7 @@ class _RatingSheetState extends State<_RatingSheet> {
           const SizedBox(height: 6),
           if (_rating >= 4)
             Text(
-              'След изпращане ще те поканим да ни оцениш и в Google Play.',
+              'След изпращане ще те поканим да ни оцениш и в ${Platform.isIOS ? 'App Store' : 'Google Play'}.',
               style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           const SizedBox(height: 12),
@@ -196,7 +197,9 @@ class _RatingSheetState extends State<_RatingSheet> {
                 ? const SizedBox(
                     width: 18, height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : Text(_rating >= 4 ? 'Оцени в Google Play' : 'Изпрати отзив'),
+                : Text(_rating >= 4
+                    ? (Platform.isIOS ? 'Оцени в App Store' : 'Оцени в Google Play')
+                    : 'Изпрати отзив'),
           ),
         ),
       ],

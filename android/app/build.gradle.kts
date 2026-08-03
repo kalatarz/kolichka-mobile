@@ -18,7 +18,10 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.kolichka.kolichka"
-    compileSdk = flutter.compileSdkVersion
+    // Pinned to Android 16 (API 36): Google Play requires targetSdk 36 for updates
+    // (deadline 2026-08-31). Flutter 3.29's default is 35, so override explicitly.
+    // AGP 8.7.0 wasn't tested against compileSdk 36 → warning suppressed in gradle.properties.
+    compileSdk = 36
     ndkVersion = "27.0.12077973"  // Required by geolocator, shared_preferences, url_launcher
 
     compileOptions {
@@ -35,7 +38,7 @@ android {
     defaultConfig {
         applicationId = "com.kolichka.kolichka"
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 36  // Android 16 — required by Google Play for app updates.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
