@@ -1,29 +1,21 @@
 /// FoodBase (foodbase.dev) integration — nutrition scores for products.
 ///
-/// Searches the FoodBase catalog by product name (Bulgarian) and exposes the
-/// per-product Nutri-Score / NOVA / Eco-Score plus a macro summary, and builds
-/// the public article link (the nutrition-scores page) for a product.
+/// Searches by product name (Bulgarian) and exposes the per-product Nutri-Score
+/// / NOVA / Eco-Score plus a macro summary, and builds the public article link
+/// (the nutrition-scores page) for a product.
 ///
-/// The API key is provided at BUILD time via `--dart-define=FOODBASE_KEY=…`
-/// (sourced from ~/work/secrets/foodbase → $FOODBASE_KEY). It is NEVER committed
-/// to source. If no key is compiled in, [enabled] is false and the UI hides the
-/// nutrition affordance.
-///
-/// NOTE (security): a client-embedded key is fine for an internal review build,
-/// but for public release the call should be proxied through the Kolichka
-/// backend so the key never ships in the APK. See README / TODO.
+/// The FoodBase API key is NOT in the app. Requests go through the Kolichka
+/// backend proxy `GET /api/foodbase/search` (same endpoint the website uses),
+/// which injects the key server-side, normalises the response, enriches with the
+/// detail endpoint, and falls back to the public catalog when the quota is spent.
 library;
 
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../config.dart';
 
-/// API base (versioned) and the public website used for article links.
-const String _apiBase = 'https://foodbase.dev/v1';
+/// Public website used for the "view on FoodBase" article link (no key needed).
 const String _webBase = 'https://foodbase.dev/products';
-
-/// Compiled-in API key (build-time only, never committed).
-const String _foodbaseKey =
-    String.fromEnvironment('FOODBASE_KEY', defaultValue: '');
 
 class FoodbaseException implements Exception {
   final String message;
@@ -132,7 +124,9 @@ class FoodbaseFood {
   }
 
   factory FoodbaseFood.fromJson(Map<String, dynamic> j) {
-    final ns = j['nutrition_summary'];
+    // Proxy returns `nutrition`/`ecoscore`; the raw API used
+    // `nutrition_summary`/`ecoscore_grade` — accept either.
+    final ns = j['nutrition'] ?? j['nutrition_summary'];
     return FoodbaseFood(
       id: (j['id'] ?? '').toString(),
       name: _displayName(j),
@@ -141,7 +135,7 @@ class FoodbaseFood {
           : null,
       nutriscore: _grade(j['nutriscore']),
       novaGroup: (j['nova_group'] is num) ? (j['nova_group'] as num).toInt() : null,
-      ecoscore: _grade(j['ecoscore_grade']),
+      ecoscore: _grade(j['ecoscore'] ?? j['ecoscore_grade']),
       imageUrl: (j['image_url'] is String && (j['image_url'] as String).isNotEmpty)
           ? j['image_url'] as String
           : null,
@@ -160,22 +154,23 @@ class FoodbaseFood {
 }
 
 class FoodbaseService {
-  /// True when a key was compiled in — gate the UI on this.
-  static bool get enabled => _foodbaseKey.isNotEmpty;
+  /// The nutrition feature is served by the Kolichka backend proxy, which is
+  /// always available — no build-time key gating anymore.
+  static bool get enabled => true;
 
   /// Public article / nutrition-scores link for a product name, e.g.
   /// https://foodbase.dev/products?q=кисело+мляко
   static Uri articleUrl(String query) =>
       Uri.parse('$_webBase?q=${Uri.encodeQueryComponent(query.trim())}');
 
-  /// Search the catalog by name. Returns the top matches (best first).
+  /// Search by name via the backend proxy. Returns the top matches (best first).
   Future<List<FoodbaseFood>> search(String query,
       {String lang = 'bg', int limit = 5}) async {
-    if (!enabled) throw FoodbaseException('FoodBase не е конфигуриран.');
     final q = query.trim();
     if (q.isEmpty) return const [];
 
-    final uri = Uri.parse('$_apiBase/foods/search').replace(queryParameters: {
+    final uri =
+        Uri.parse('${Config.apiBaseUrl}/api/foodbase/search').replace(queryParameters: {
       'q': q,
       'lang': lang,
       'limit': '$limit',
@@ -184,34 +179,28 @@ class FoodbaseService {
     late final http.Response res;
     try {
       res = await http
-          .get(uri, headers: {'X-API-Key': _foodbaseKey, 'Accept': 'application/json'})
-          .timeout(const Duration(seconds: 15));
+          .get(uri, headers: {'Accept': 'application/json', 'User-Agent': Config.userAgent})
+          .timeout(const Duration(seconds: 20));
     } catch (_) {
-      throw FoodbaseException('Няма връзка с FoodBase. Провери интернет.');
-    }
-
-    if (res.statusCode == 429) {
-      throw FoodbaseException('Дневният лимит към FoodBase е достигнат.');
-    }
-    if (res.statusCode == 401 || res.statusCode == 403) {
-      throw FoodbaseException('Невалиден ключ за FoodBase.');
-    }
-    if (res.statusCode != 200) {
-      throw FoodbaseException('FoodBase грешка (${res.statusCode}).');
+      throw FoodbaseException('Няма връзка. Провери интернет.');
     }
 
     final Map<String, dynamic> body;
     try {
       body = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
     } catch (_) {
-      throw FoodbaseException('Неочакван отговор от FoodBase.');
+      throw FoodbaseException('Неочакван отговор от сървъра.');
     }
-    // The API returns {error, message} with a 200 on some quota states.
-    if (body['error'] != null && body['data'] == null) {
-      throw FoodbaseException(body['message']?.toString() ?? body['error'].toString());
+
+    if (res.statusCode != 200) {
+      // The proxy returns a friendly Bulgarian {error, message} for
+      // quota (429) / upstream (502) / disabled (503) states.
+      throw FoodbaseException(
+          body['message']?.toString() ?? 'Хранителните стойности не са достъпни.');
     }
-    final data = (body['data'] as List?) ?? const [];
-    return data
+
+    final results = (body['results'] as List?) ?? const [];
+    return results
         .whereType<Map<String, dynamic>>()
         .map(FoodbaseFood.fromJson)
         .toList();
