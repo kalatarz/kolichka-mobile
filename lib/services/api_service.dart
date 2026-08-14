@@ -14,6 +14,7 @@ import '../models/geocode_result.dart';
 import '../models/compare_result.dart';
 import '../models/basket_result.dart';
 import '../models/promotion_result.dart';
+import '../models/favorite_deal.dart';
 
 /// Broad category of an API failure, so callers can show a specific,
 /// user-friendly message (see [friendlyError]) instead of a raw exception.
@@ -278,6 +279,42 @@ class ApiService {
   /// GET /api/stats
   Future<Map<String, dynamic>> stats() async {
     return await _get('/api/stats');
+  }
+
+  /// POST /api/favorites/deals — which of the user's favourites are discounted
+  /// nearby right now. Mirrors the web's push matching but returns the list
+  /// synchronously, sorted by biggest discount first.
+  Future<List<FavoriteDeal>> favoriteDeals({
+    required List<String> favorites,
+    required double lat,
+    required double lng,
+    double radiusKm = 3.0,
+    int minPct = 0,
+  }) async {
+    final uri = Uri.parse('${Config.apiBaseUrl}/api/favorites/deals');
+    try {
+      final resp = await _client
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json', 'User-Agent': Config.userAgent},
+            body: jsonEncode({
+              'favorites': favorites,
+              'lat': lat,
+              'lng': lng,
+              'radius_km': radiusKm,
+              'min_pct': minPct,
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
+      _throwForStatus(resp.statusCode, 'Favorite deals failed');
+      final body = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+      final list = (body['deals'] as List<dynamic>?) ?? const [];
+      return list.map((e) => FavoriteDeal.fromJson(e as Map<String, dynamic>)).toList();
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw _netError(e);
+    }
   }
 
   /// POST /api/feedback

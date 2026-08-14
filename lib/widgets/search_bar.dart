@@ -35,7 +35,9 @@ class _KolichkaSearchBarState extends State<KolichkaSearchBar> {
     // the clear button by ValueListenableBuilder on the controller, so the
     // field element itself is never rebuilt by typing or focus changes — the
     // listeners here only manage the floating suggestion overlay imperatively.
+    _prevText = widget.controller.text;
     widget.controller.addListener(_syncOverlaySoon);
+    widget.controller.addListener(_onTextChanged);
     _focusNode.addListener(_syncOverlaySoon);
   }
 
@@ -43,9 +45,27 @@ class _KolichkaSearchBarState extends State<KolichkaSearchBar> {
   void dispose() {
     _removeOverlay();
     widget.controller.removeListener(_syncOverlaySoon);
+    widget.controller.removeListener(_onTextChanged);
     _focusNode.removeListener(_syncOverlaySoon);
     _focusNode.dispose();
     super.dispose();
+  }
+
+  String _prevText = '';
+
+  // Reset the results when the query is emptied — by the × button OR by
+  // backspacing to nothing. Previously only the × button cleared results, so a
+  // backspace-to-empty left stale results on screen and re-searching did nothing.
+  void _onTextChanged() {
+    final t = widget.controller.text;
+    final becameEmpty = t.isEmpty && _prevText.isNotEmpty;
+    _prevText = t;
+    if (becameEmpty) {
+      // Deferred so we never rebuild the field mid-keystroke (keyboard safety).
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onClear?.call();
+      });
+    }
   }
 
   void _syncOverlaySoon() {
@@ -55,7 +75,12 @@ class _KolichkaSearchBarState extends State<KolichkaSearchBar> {
 
   void _submit() {
     final text = widget.controller.text.trim();
-    if (text.isNotEmpty) widget.onSearch(text);
+    if (text.isNotEmpty) {
+      widget.onSearch(text);
+    } else {
+      // Pressing search with an empty box returns to the default view.
+      widget.onClear?.call();
+    }
     _removeOverlay();
   }
 
@@ -202,8 +227,7 @@ class _KolichkaSearchBarState extends State<KolichkaSearchBar> {
             return InkWell(
               customBorder: const CircleBorder(),
               onTap: () {
-                widget.controller.clear();
-                widget.onClear?.call();
+                widget.controller.clear(); // fires _onTextChanged → onClear
                 _removeOverlay();
               },
               child: Padding(

@@ -16,8 +16,13 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'config.dart';
 import 'services/local_store.dart';
 import 'screens/home_screen.dart';
+import 'screens/favorite_deals_screen.dart';
 import 'services/analytics.dart';
 import 'services/notify_service.dart';
+
+/// Root navigator so a tapped daily reminder can open a screen even when the
+/// notification cold-started the app (no widget context available yet).
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 /// Persistent theme mode provider that loads from SharedPreferences and
 /// notifies listeners when the user toggles between light / dark.
@@ -56,8 +61,18 @@ void main() async {
   await provider.load();
   // Track sessions so the email nudge can wait until the user is engaged.
   await LocalStore.bumpLaunch();
-  // Re-arm the daily favourite-promo reminders if the user enabled them.
-  NotifyService.init().then((_) => NotifyService.rescheduleIfEnabled());
+  // Tapping a daily reminder opens the "discounted favourites" screen.
+  NotifyService.onReminderTap = () {
+    rootNavigatorKey.currentState?.push(
+      MaterialPageRoute(builder: (_) => const FavoriteDealsScreen()),
+    );
+  };
+  // Re-arm the daily favourite-promo reminders if the user enabled them, and
+  // route a reminder that cold-started the app to the deals screen.
+  NotifyService.init().then((_) async {
+    await NotifyService.rescheduleIfEnabled();
+    await NotifyService.handleLaunchFromNotification();
+  });
   runApp(KolichkaApp(provider: provider));
 }
 
@@ -99,6 +114,7 @@ class _KolichkaAppState extends State<KolichkaApp> {
     return MaterialApp(
       title: 'Количка',
       debugShowCheckedModeBanner: false,
+      navigatorKey: rootNavigatorKey,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: _isDark ? ThemeMode.dark : ThemeMode.light,
