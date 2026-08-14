@@ -21,6 +21,8 @@ import '../models/compare_result.dart';
 import '../services/api_service.dart';
 import '../services/location_service.dart';
 import '../services/local_store.dart';
+import '../services/foodbase_service.dart';
+import '../widgets/nutrition_sheet.dart';
 import '../services/notify_service.dart';
 import '../widgets/subscribe_sheet.dart';
 import '../widgets/feedback_sheet.dart';
@@ -29,6 +31,7 @@ import '../main.dart';
 import '../widgets/brand_header.dart';
 import '../widgets/location_chip.dart';
 import '../widgets/search_bar.dart';
+import 'favorite_deals_screen.dart';
 import '../widgets/radius_segment.dart';
 import '../data/cat_groups.dart';
 import '../widgets/chain_colors.dart';
@@ -414,11 +417,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       // The Промоции tab's cached list is now stale for the new location.
       _promoItems = [];
       if (_tab == 1) _loadPromoTab(force: true);
-      // Re-run the current query with the updated location / radius / chain filter.
-      if (_promoMode) {
-        _openPromotions();
-      } else if (_lastQuery != null) {
-        _performSearch(_lastQuery!, displayQuery: _lastQuery);
+      // Re-run the current view with the updated location / radius / chain filter
+      // so the change is reflected IMMEDIATELY (previously, with no active search
+      // the store-filter change didn't show until you re-opened location).
+      if (_tab == 0) {
+        if (!_promoMode && _lastQuery != null) {
+          _performSearch(_lastQuery!, displayQuery: _lastQuery);
+        } else {
+          _openPromotions();
+        }
       }
     }
   }
@@ -758,6 +765,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           _performSearch(q);
         },
         onChanged: _refreshLocalState,
+        onOpenDeals: () {
+          Navigator.pop(ctx);
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => FavoriteDealsScreen(lat: _lat, lng: _lng, radiusKm: _radiusKm),
+            ),
+          );
+        },
       ),
     );
   }
@@ -1867,6 +1883,9 @@ class _ProductCardState extends State<_ProductCard> {
                     ],
                   ),
                 ),
+                if (FoodbaseService.enabled)
+                  _iconBtn(Icons.eco_outlined, const Color(0xFF2E9E6B),
+                      () => showNutritionSheet(context, m.display), '\u0425\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u043d\u0438 \u0441\u0442\u043e\u0439\u043d\u043e\u0441\u0442\u0438'),
                 _iconBtn(widget.isFav ? Icons.favorite : Icons.favorite_border,
                     widget.isFav ? Colors.redAccent : cs.onSurfaceVariant, widget.onToggleFav, '\u041b\u044e\u0431\u0438\u043c\u0438'),
                 _iconBtn(Icons.add_shopping_cart, cs.primary, widget.onAddToBasket, '\u0414\u043e\u0431\u0430\u0432\u0438 \u0432 \u043a\u043e\u0448\u043d\u0438\u0446\u0430\u0442\u0430'),
@@ -1923,8 +1942,9 @@ class _ProductCardState extends State<_ProductCard> {
 class _FavoritesSheet extends StatefulWidget {
   final void Function(String query) onSearch;
   final Future<void> Function() onChanged;
+  final VoidCallback onOpenDeals;
 
-  const _FavoritesSheet({required this.onSearch, required this.onChanged});
+  const _FavoritesSheet({required this.onSearch, required this.onChanged, required this.onOpenDeals});
 
   @override
   State<_FavoritesSheet> createState() => _FavoritesSheetState();
@@ -1974,6 +1994,38 @@ class _FavoritesSheetState extends State<_FavoritesSheet> {
                 const Spacer(),
                 TextButton(onPressed: () => Navigator.pop(context), child: const Text('Затвори')),
               ],
+            ),
+          ),
+          const Divider(height: 1),
+          // Primary CTA — pull which of the user's favourites are discounted nearby.
+          InkWell(
+            onTap: widget.onOpenDeals,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              color: const Color(0xFFD23B3B).withValues(alpha: 0.10),
+              child: Row(
+                children: [
+                  const Text('🔻', style: TextStyle(fontSize: 20)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Намаления на любимите близо до теб',
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: Theme.of(context).colorScheme.onSurface)),
+                        Text('Виж кои твои любими са в промоция сега',
+                            style: TextStyle(
+                                fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.chevron_right_rounded, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                ],
+              ),
             ),
           ),
           const Divider(height: 1),

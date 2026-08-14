@@ -20,6 +20,29 @@ class NotifyService {
   static final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
   static bool _ready = false;
 
+  /// Payload attached to the daily reminders; identifies a tap we should route
+  /// to the "discounted favourites" screen.
+  static const String favDealsPayload = 'fav-deals';
+
+  /// Set by the app (main.dart) so a tapped reminder can open the discounted-
+  /// favourites screen. Kept UI-free here: the service just invokes this.
+  static void Function()? onReminderTap;
+
+  static void _onResponse(NotificationResponse resp) {
+    if (resp.payload == favDealsPayload) onReminderTap?.call();
+  }
+
+  /// Call once from main() AFTER wiring [onReminderTap], so a reminder that
+  /// cold-started the app (app was terminated) still opens the deals screen.
+  static Future<void> handleLaunchFromNotification() async {
+    await init();
+    final launch = await _plugin.getNotificationAppLaunchDetails();
+    if (launch?.didNotificationLaunchApp == true &&
+        launch?.notificationResponse?.payload == favDealsPayload) {
+      onReminderTap?.call();
+    }
+  }
+
   // Peak times (local): early morning + late evening.
   static const int _morningHour = 7, _morningMin = 30;
   static const int _eveningHour = 20, _eveningMin = 0;
@@ -49,7 +72,10 @@ class NotifyService {
         requestSoundPermission: false,
       ),
     );
-    await _plugin.initialize(settings);
+    await _plugin.initialize(
+      settings,
+      onDidReceiveNotificationResponse: _onResponse,
+    );
     await _plugin
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(_channel);
@@ -110,9 +136,9 @@ class NotifyService {
     // so the toggle never gets stuck OFF after the user allowed notifications.
     try {
       await _schedule(_idMorning, _morningHour, _morningMin,
-          '🌅 Добро утро! Виж днешните промоции', 'Любимите ти продукти може да са намалени днес.');
+          '🌅 Добро утро! Виж днешните промоции', 'Докосни, за да видиш кои твои любими са намалени близо до теб.');
       await _schedule(_idEvening, _eveningHour, _eveningMin,
-          '🌙 Намаления за утре', 'Провери цените на любимите си продукти преди пазар.');
+          '🌙 Намаления за утре', 'Докосни и виж намаленията на любимите ти близо до теб.');
     } catch (_) {/* re-armed on next app launch via rescheduleIfEnabled() */}
     await LocalStore.setNotifyEnabled(true);
     return true;
@@ -124,6 +150,7 @@ class NotifyService {
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: DateTimeComponents.time, // repeat daily at this time
+      payload: favDealsPayload, // tap → discounted-favourites screen
     );
   }
 
@@ -139,9 +166,9 @@ class NotifyService {
     if (await LocalStore.notifyEnabled()) {
       await init();
       await _schedule(_idMorning, _morningHour, _morningMin,
-          '🌅 Добро утро! Виж днешните промоции', 'Любимите ти продукти може да са намалени днес.');
+          '🌅 Добро утро! Виж днешните промоции', 'Докосни, за да видиш кои твои любими са намалени близо до теб.');
       await _schedule(_idEvening, _eveningHour, _eveningMin,
-          '🌙 Намаления за утре', 'Провери цените на любимите си продукти преди пазар.');
+          '🌙 Намаления за утре', 'Докосни и виж намаленията на любимите ти близо до теб.');
     }
   }
 }
