@@ -8,6 +8,7 @@ import '../services/api_service.dart';
 import '../services/local_store.dart';
 import '../services/analytics.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/external.dart';
 import '../widgets/item_emoji.dart';
 import 'map_screen.dart';
@@ -397,6 +398,35 @@ class _BasketScreenState extends State<BasketScreen> {
     Analytics.instance.track('share_basket', {'items': _items.length});
   }
 
+  /// Send the basket to miniChef to be cooked.
+  ///
+  /// Unbought items only. A ticked item is already in the cupboard; what this shop is for is
+  /// the rest, and it is also the shorter, better prompt. Falls back to the whole basket when
+  /// everything is ticked, because an empty hand-off would read as a broken button.
+  Future<void> _cookWithBasket() async {
+    var names = _items.where((n) => !_bought.contains(n.trim().toLowerCase())).toList();
+    if (names.isEmpty) names = List<String>.from(_items);
+    if (names.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Кошницата е празна')));
+      }
+      return;
+    }
+    Analytics.instance.track('basket_cook', {'items': names.length});
+    // Uri.replace percent-encodes for us — do NOT also call Uri.encodeComponent,
+    // or the Cyrillic arrives double-encoded as mojibake.
+    final uri = Uri.parse('https://minichef.gotvach.com/').replace(queryParameters: {
+      'cook': names.join(','),
+      'lang': 'bg',
+      'from': 'kolichka-app',
+    });
+    // externalApplication, NOT an in-app web view: miniChef asks for an email at the end of
+    // the demo, and an in-app browser has no password manager, no existing session and no
+    // Apple sign-in on iOS.
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
   Future<void> _compare() async {
     // Only compare items still to buy — bought (checked-off) items must not
     // appear in the store comparison anymore.
@@ -580,7 +610,7 @@ class _BasketScreenState extends State<BasketScreen> {
               children: [
                 ..._buildChecklist(),
                 Padding(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
                   child: SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
@@ -593,6 +623,21 @@ class _BasketScreenState extends State<BasketScreen> {
                     ),
                   ),
                 ),
+                // Directly under the primary action, on the list someone is about to shop:
+                // "what do I cook with this?" lands here and nowhere else. Secondary
+                // styling keeps it an offer rather than a detour.
+                if (_items.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: TextButton.icon(
+                        onPressed: _cookWithBasket,
+                        icon: const Text('👨‍🍳', style: TextStyle(fontSize: 16)),
+                        label: const Text('Сготви с това'),
+                      ),
+                    ),
+                  ),
                 if (_loading)
                   const Padding(
                     padding: EdgeInsets.all(24),
