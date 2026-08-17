@@ -35,6 +35,17 @@ class Config {
     );
   }
 
+  /// Community Discord invite.
+  ///
+  /// A permanent (never-expiring) invite — the previous one silently expired and
+  /// nobody noticed, because discord.gg answers 301 for a dead code and only
+  /// `discord.com/api/v10/invites/<code>` reveals it. If this ever needs changing,
+  /// check it there first and change it HERE, not at each call site.
+  static const String discordUrl = 'https://discord.gg/SVhpDmZkdR';
+
+  /// miniChef — recipes from what you already have. `from=` is funnel attribution.
+  static const String minichefUrl = 'https://minichef.gotvach.com/?lang=bg&from=kolichka-app';
+
   /// Default search radius in kilometres.
   static const double defaultRadiusKm = 3.0;
 

@@ -8,6 +8,7 @@ import '../config.dart';
 import '../widgets/subscribe_sheet.dart';
 import '../services/notify_service.dart';
 import '../services/local_store.dart';
+import '../services/analytics.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -75,6 +76,26 @@ class SettingsScreen extends StatelessWidget {
             title: const Text('Оцени и сподели мнение'),
             subtitle: const Text('Дай оценка с 5 звезди или докладвай проблем'),
             onTap: () => showRatingSheet(context),
+          ),
+          ListTile(
+            leading: const Text('👨‍🍳', style: TextStyle(fontSize: 20)),
+            title: const Text('miniChef — рецепти'),
+            subtitle: const Text('Каква рецепта да сготвиш с това, което имаш'),
+            trailing: const Icon(Icons.open_in_new, size: 16),
+            onTap: () {
+              Analytics.instance.track('open_minichef', {'from': 'settings'});
+              _launchUrl(Config.minichefUrl);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.forum_outlined, size: 20, color: Color(0xFF5865F2)),
+            title: const Text('Discord общност'),
+            subtitle: const Text('Питай, предлагай и виж какво предстои'),
+            trailing: const Icon(Icons.open_in_new, size: 16),
+            onTap: () {
+              Analytics.instance.track('open_discord', {'from': 'settings'});
+              _launchUrl(Config.discordUrl);
+            },
           ),
 
           const Divider(height: 32),
