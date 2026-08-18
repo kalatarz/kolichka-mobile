@@ -38,3 +38,28 @@ String itemEmoji(String name) {
   if (has(['плод', 'зеленчук', 'салата', 'чушк', 'зеле', 'грозде', 'портокал', 'лимон', 'круша', 'праскова'])) return '🥗';
   return '🛒';
 }
+
+/// Strips a leading emoji (and the space after it) from a server-supplied name.
+///
+/// The basket compare endpoint used to echo category items back as
+/// "🍅 Домати" — emoji glued onto the label. Every result row here renders
+/// [itemEmoji] beside the name, so that arrived on screen as "🍅 🍅 Домати",
+/// and cucumbers/tomatoes looked duplicated. The backend now sends a clean
+/// name, but this stays as a guard: an installed build must not depend on the
+/// server being deployed, and nothing should ever double an icon again.
+String stripLeadingEmoji(String name) {
+  var s = name.trimLeft();
+  while (s.isNotEmpty) {
+    final r = s.runes.first;
+    final isEmoji = (r >= 0x1F300 && r <= 0x1FAFF) || // pictographs, food, symbols
+        (r >= 0x2600 && r <= 0x27BF) ||               // misc symbols & dingbats
+        (r >= 0x1F1E6 && r <= 0x1F1FF) ||             // regional indicators
+        r == 0x200D ||                                // zero-width joiner
+        r == 0xFE0F ||                                // variation selector-16
+        r == 0x20E3;                                  // combining keycap
+    if (!isEmoji) break;
+    s = s.substring(String.fromCharCode(r).length).trimLeft();
+  }
+  // An item whose whole name is an emoji keeps it — better than an empty row.
+  return s.isEmpty ? name.trim() : s.trim();
+}

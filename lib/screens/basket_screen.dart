@@ -873,7 +873,7 @@ class _BasketScreenState extends State<BasketScreen> {
                         children: [
                           Text(itemEmoji(item.query), style: const TextStyle(fontSize: 14)),
                           const SizedBox(width: 6),
-                          Expanded(child: Text(item.query, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+                          Expanded(child: Text(stripLeadingEmoji(item.query), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
                           Text(item.chainName, style: const TextStyle(fontSize: 12)),
                           const SizedBox(width: 8),
                           Text(
@@ -1012,7 +1012,7 @@ class _StoreCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(item.name ?? item.query, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                        Text(stripLeadingEmoji(item.name ?? item.query), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                         if (item.name != null)
                           Text(item.query, style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                       ],
