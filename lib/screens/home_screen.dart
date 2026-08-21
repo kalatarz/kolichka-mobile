@@ -56,6 +56,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   final ScrollController _scrollController = ScrollController();
 
   // Location state
+  // Discounts shown directly on the home screen. Until now the only way to see a
+  // discounted favourite was Favourites → bottom sheet → a button, or tapping a
+  // reminder notification — so for almost everyone the app never showed a single
+  // discount, while the data had dozens within walking distance.
+  List<_HomeDeal> _deals = [];
+  bool _dealsLoading = false;
+  bool _dealsFromFavorites = false;
+
   double _lat = 42.7; // Sofia default
   double _lng = 23.3;
   String? _locationLabel;
@@ -184,6 +192,69 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     }
   }
 
+  /// Loads what is actually discounted near the user, right now.
+  ///
+  /// Favourites first, because "the yoghurt you always buy is 40% off 300 m away" is
+  /// the sentence that matters. Falls back to the best nearby promotions when there
+  /// are no favourites yet or none of them happen to be on offer — an empty strip
+  /// teaches people the feature is broken, and a new user has no favourites by
+  /// definition, so the fallback is the common case on day one.
+  Future<void> _loadDeals() async {
+    if (_dealsLoading) return;
+    setState(() => _dealsLoading = true);
+    final api = ApiService();
+    try {
+      final favs = await LocalStore.favorites();
+      var found = <_HomeDeal>[];
+      var fromFavs = false;
+
+      if (favs.isNotEmpty) {
+        final d = await api.favoriteDeals(
+          favorites: favs, lat: _lat, lng: _lng, radiusKm: _radiusKm, minPct: 10);
+        found = d
+            .map((x) => _HomeDeal(
+                  name: x.name, query: x.query, chain: x.chainName,
+                  promo: x.pricePromo, retail: x.priceRetail, pct: x.pctOff, distKm: x.distKm))
+            .toList();
+        fromFavs = found.isNotEmpty;
+      }
+
+      if (found.isEmpty) {
+        final p = await api.promotions(lat: _lat, lng: _lng, radiusKm: _radiusKm);
+        // Interleave chains rather than taking the first chain's ten: otherwise the
+        // strip is a single retailer's shelf, which reads like an advert.
+        final byChain = p.chains.map((c) => c.items
+            .where((i) => i.pctOff >= 15 && i.rawName.trim().isNotEmpty)
+            .map((i) => _HomeDeal(
+                  name: i.rawName, query: i.rawName, chain: c.chainName,
+                  promo: i.pricePromo, retail: i.priceRetail, pct: i.pctOff, distKm: -1))
+            .toList()).toList();
+        for (var i = 0; found.length < 12; i++) {
+          var added = false;
+          for (final list in byChain) {
+            if (i < list.length) { found.add(list[i]); added = true; }
+            if (found.length >= 12) break;
+          }
+          if (!added) break;
+        }
+        found.sort((a, b) => b.pct.compareTo(a.pct));
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _deals = found.take(12).toList();
+        _dealsFromFavorites = fromFavs;
+        _dealsLoading = false;
+      });
+      Analytics.instance.track('home_deals_shown',
+          {'n': _deals.length, 'source': fromFavs ? 'favorites' : 'promotions'});
+    } catch (_) {
+      if (mounted) setState(() => _dealsLoading = false);
+    } finally {
+      api.close();
+    }
+  }
+
   Future<void> _init() async {
     setState(() => _isLoading = true);
     try {
@@ -229,6 +300,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       _scheduleSubscribeNudge();
       // 2) Background: get a precise GPS fix and snap the UI to it.
       _upgradeLocation();
+
+      // 3) Discounts for the location we already have. Not awaited: the strip
+      //    filling in a moment later is fine, blocking first paint on it is not.
+      //    _upgradeLocation() refreshes it if GPS moves us somewhere else.
+      _loadDeals();
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -886,7 +962,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     padding: const EdgeInsets.only(bottom: 80), // space for FAB
                     child: Column(
                       children: [
-                        // 4. Category groups
+                        // 4. What is actually discounted right now. Placed BEFORE the category
+                        //    grid because that is the question people open the app with;
+                        //    categories are navigation, not an answer.
+                        if (_searchController.text.trim().isEmpty && _currentResult == null)
+                          _buildDealsStrip(),
+
+                        // 5. Category groups
                         _buildCategoryGroups(),
 
                         // 5. Results area
@@ -1147,6 +1229,123 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   }
 
   /// Search error display.
+  /// Horizontal strip of real, current discounts.
+  Widget _buildDealsStrip() {
+    if (_deals.isEmpty) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 8, 6),
+          child: Row(
+            children: [
+              const Text('\u{1F53B}', style: TextStyle(fontSize: 15)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  _dealsFromFavorites ? 'Твоите любими на промоция' : 'Намаления близо до теб',
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  Analytics.instance.track('home_deals_see_all');
+                  Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => FavoriteDealsScreen(lat: _lat, lng: _lng, radiusKm: _radiusKm)));
+                },
+                child: const Text('виж всички'),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 134,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: _deals.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (ctx, i) {
+              final d = _deals[i];
+              return InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () {
+                  Analytics.instance.track('home_deal_tap', {'pct': d.pct});
+                  _searchController.text = d.query;
+                  _performSearch(d.query);
+                },
+                child: Container(
+                  width: 178,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Theme.of(ctx).cardColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: cs.primary.withOpacity(0.25)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFD93025),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text('-${d.pct}%',
+                                style: const TextStyle(
+                                    color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                          ),
+                          const Spacer(),
+                          Text(itemEmoji(d.name), style: const TextStyle(fontSize: 15)),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Expanded(
+                        child: Text(
+                          stripLeadingEmoji(d.name),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 12.5, fontWeight: FontWeight.w600, height: 1.25),
+                        ),
+                      ),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Text('${d.promo.toStringAsFixed(2)} \u20ac',
+                              style: TextStyle(
+                                  fontSize: 14, fontWeight: FontWeight.bold, color: cs.primary)),
+                          const SizedBox(width: 5),
+                          Text('${d.retail.toStringAsFixed(2)} \u20ac',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: cs.onSurfaceVariant,
+                                decoration: TextDecoration.lineThrough,
+                              )),
+                        ],
+                      ),
+                      Text(
+                        d.distKm >= 0 ? '${d.chain} \u00b7 ${d.distKm.toStringAsFixed(1)} км' : d.chain,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 4),
+      ],
+    );
+  }
+
   Widget _buildSearchError() {
     return Padding(
       padding: const EdgeInsets.all(24),
@@ -2124,4 +2323,27 @@ class _FavoritesSheetState extends State<_FavoritesSheet> {
       ),
     );
   }
+}
+
+/// One discounted product as the home strip needs it. A local shape rather than
+/// reusing FavoriteDeal, because the strip is fed from two different endpoints
+/// (/api/favorites/deals and /api/promotions) whose payloads do not match — and
+/// promotions carry no distance, hence distKm = -1 meaning "not known".
+class _HomeDeal {
+  final String name;
+  final String query;
+  final String chain;
+  final double promo;
+  final double retail;
+  final int pct;
+  final double distKm;
+  const _HomeDeal({
+    required this.name,
+    required this.query,
+    required this.chain,
+    required this.promo,
+    required this.retail,
+    required this.pct,
+    required this.distKm,
+  });
 }
